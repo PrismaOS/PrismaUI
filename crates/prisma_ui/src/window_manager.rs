@@ -878,10 +878,9 @@ impl ManagedWindow {
                     .gap_2()
                     .child(
                         Button::new("minimize")
-                            .ghost()
-                            .size(px(24.0))
-                            .text_color(if focused { cx.theme().accent_foreground } else { cx.theme().muted_foreground })
-                            .icon(IconName::Minus)
+                            .outline()
+                            .size(px(28.0))
+                            .icon(IconName::Menu)
                             .on_click(cx.listener(move |_, _, window, cx| {
                                 if let Some(wm) = wm2.upgrade() {
                                     wm.update(cx, |wm, cx| wm.minimize_window(window_id, window, cx));
@@ -890,10 +889,9 @@ impl ManagedWindow {
                     )
                     .child(
                         Button::new("maximize")
-                            .ghost()
-                            .size(px(24.0))
-                            .text_color(if focused { cx.theme().accent_foreground } else { cx.theme().muted_foreground })
-                            .icon(if self.maximized { IconName::Minimize } else { IconName::Maximize })
+                            .outline()
+                            .size(px(28.0))
+                            .icon(if self.maximized { IconName::Folder } else { IconName::Settings })
                             .on_click(cx.listener(move |_, _, window, cx| {
                                 if let Some(wm) = wm3.upgrade() {
                                     wm.update(cx, |wm, cx| wm.toggle_maximize_window(window_id, window, cx));
@@ -902,11 +900,9 @@ impl ManagedWindow {
                     )
                     .child(
                         Button::new("close")
-                            .ghost()
-                            .size(px(24.0))
-                            .text_color(if focused { cx.theme().accent_foreground } else { cx.theme().muted_foreground })
-                            .icon(IconName::Close)
-                            .hover(|style| style.bg(gpui::red()).text_color(gpui::white()))
+                            .outline()
+                            .size(px(28.0))
+                            .icon(IconName::User)
                             .on_click(cx.listener(move |_, _, window, cx| {
                                 if let Some(wm) = wm4.upgrade() {
                                     wm.update(cx, |wm, cx| wm.close_window(window_id, window, cx));

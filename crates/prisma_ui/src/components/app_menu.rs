@@ -411,18 +411,21 @@ impl AppMenu {
                     .child(
                         div()
                             .w_full()
+                            .h_full()
                             .flex()
+                            .flex_row()
                             .flex_wrap()
-                            .gap_4()
+                            .gap_3()
                             .p_4()
                             .justify_start()
+                            .items_start()
                             .children(self.filtered_apps.iter().enumerate().map(|(idx, app)| {
                                 Button::new(("app", idx))
                                     .ghost()
-                                    .p_3()
+                                    .p_2()
                                     .rounded(cx.theme().radius)
-                                    .w(px(100.0)) // Fixed width for consistent sizing
-                                    .h(px(100.0)) // Fixed height
+                                    .w(px(90.0)) // Smaller fixed width
+                                    .h(px(90.0)) // Smaller fixed height
                                     .on_click({
                                         let app_id = app.id.clone();
                                         cx.listener(move |this, _, window, cx| {
@@ -434,10 +437,10 @@ impl AppMenu {
                                             .size_full()
                                             .items_center()
                                             .justify_center()
-                                            .gap_2() // Appropriate gap for fixed size
+                                            .gap_1() // Smaller gap for 90px button
                                             .child(
                                                 div()
-                                                    .size(px(48.0)) // Icon container sized for 100px button
+                                                    .size(px(36.0)) // Icon container sized for 90px button
                                                     .flex()
                                                     .items_center()
                                                     .justify_center()
@@ -445,7 +448,7 @@ impl AppMenu {
                                                     .text_color(cx.theme().primary)
                                                     .rounded(cx.theme().radius)
                                                     .shadow_sm()
-                                                    .child(Icon::new(app.icon.clone()).size_6()) // Appropriate size
+                                                    .child(Icon::new(app.icon.clone()).size_5()) // Smaller icon
                                             )
                                             .child(
                                                 div()
