@@ -716,7 +716,7 @@ impl Render for WebBrowserApp {
                     .gap_2()
                     .child(Button::new("back").ghost().child(Icon::new(IconName::ArrowLeft).size_4()))
                     .child(Button::new("forward").ghost().child(Icon::new(IconName::ArrowRight).size_4()))
-                    .child(Button::new("refresh").ghost().child(Icon::new(IconName::RotateCw).size_4()))
+                    .child(Button::new("refresh").ghost().label("⟳"))
                     .child(
                         div()
                             .flex_1()
@@ -817,7 +817,7 @@ impl Render for CalculatorApp {
                                     _ => "0"
                                 };
 
-                                Button::new(format!("calc-{}-{}", row, col))
+                                Button::new(("calc", row as usize * 4 + col as usize))
                                     .size(px(60.0))
                                     .ghost()
                                     .child(button_text)
