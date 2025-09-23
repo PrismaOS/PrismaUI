@@ -6,7 +6,7 @@ use gpui::{
     Point, Render, Size, Styled, WeakEntity, Window
 };
 use gpui_component::{
-    button::{Button, ButtonVariants as _}, h_flex, v_flex, ActiveTheme, Icon, IconName, StyledExt
+    button::{Button, ButtonVariants as _}, h_flex, v_flex, ActiveTheme, IconName, StyledExt
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -123,7 +123,7 @@ impl WindowManager {
         let managed_window = cx.new(|cx| ManagedWindow::new(
             id,
             title,
-            content.into(),
+            content,
             bounds,
             cx,
         ));

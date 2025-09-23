@@ -29,7 +29,6 @@ pub enum CommandType {
 }
 
 /// A command that can be executed from the palette
-#[derive(Clone, Debug)]
 pub struct Command {
     pub id: String,
     pub title: String,
@@ -38,6 +37,20 @@ pub struct Command {
     pub command_type: CommandType,
     pub keywords: Vec<String>,
     pub executable: Box<dyn Fn() + Send + Sync>,
+}
+
+impl Clone for Command {
+    fn clone(&self) -> Self {
+        Self {
+            id: self.id.clone(),
+            title: self.title.clone(),
+            subtitle: self.subtitle.clone(),
+            icon: self.icon,
+            command_type: self.command_type.clone(),
+            keywords: self.keywords.clone(),
+            executable: Box::new(|| {}), // Placeholder
+        }
+    }
 }
 
 /// Actions for command palette

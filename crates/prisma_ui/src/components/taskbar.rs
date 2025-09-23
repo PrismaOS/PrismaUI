@@ -212,7 +212,7 @@ impl Taskbar {
             )
             .on_click(cx.listener(|this, _, _, cx| {
                 this.app_menu.update(cx, |menu, cx| {
-                    menu.toggle(cx);
+                    menu.toggle(window, cx);
                 });
             }))
     }

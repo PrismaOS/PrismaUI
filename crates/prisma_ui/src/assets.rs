@@ -21,10 +21,10 @@ impl gpui::AssetSource for Assets {
             .ok_or_else(|| anyhow::anyhow!("Asset not found: {}", path))
     }
 
-    fn list(&self, path: &str) -> anyhow::Result<Vec<std::path::PathBuf>> {
+    fn list(&self, path: &str) -> anyhow::Result<Vec<gpui::SharedString>> {
         Ok(Self::iter()
             .filter(|p| p.starts_with(path))
-            .map(|p| std::path::PathBuf::from(p.to_string()))
+            .map(|p| gpui::SharedString::from(p.to_string()))
             .collect())
     }
 }

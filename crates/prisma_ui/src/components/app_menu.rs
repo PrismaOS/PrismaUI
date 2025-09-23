@@ -190,10 +190,10 @@ impl AppMenu {
     }
 
     /// Toggle menu open/closed state
-    pub fn toggle(&mut self, cx: &mut Context<Self>) {
+    pub fn toggle(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.open = !self.open;
         if self.open {
-            cx.focus_view(&self.search_input);
+            cx.focus_view(&self.search_input, window);
         }
         cx.notify();
     }
@@ -322,7 +322,7 @@ impl AppMenu {
                 let is_active = category == self.active_category;
                 let count = self.categories.get(&category).map_or(0, |apps| apps.len());
 
-                Button::new(format!("category-{:?}", category))
+                Button::new(format!("category-{:?}", category).as_str())
                     .full_width()
                     .ghost()
                     .justify_start()
