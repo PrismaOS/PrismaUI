@@ -1,9 +1,9 @@
 /// System shell component managing desktop interactions and effects
 use gpui::{
-    div, px, Context, Entity, FocusHandle, Focusable, IntoElement, ParentElement,
+    div, px, Context, Entity, FocusHandle, Focusable, InteractiveElement, IntoElement, ParentElement,
     Render, Styled, Window, Bounds, Pixels, AppContext
 };
-use gpui_component::{ActiveTheme, StyledExt};
+use gpui_component::{ActiveTheme, Icon, IconName, StyledExt};
 
 use crate::{
     window_manager::WindowManager,
