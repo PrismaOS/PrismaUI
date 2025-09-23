@@ -287,10 +287,10 @@ impl Render for Desktop {
                 )
             })
             // Global keyboard shortcuts
-            .on_key_down(cx.listener(|this, event, window, cx| {
+            .on_key_down(cx.listener(|this, event: &gpui::KeyDownEvent, window, cx| {
                 match event.keystroke.key.as_str() {
-                    "Space" if event.keystroke.modifiers.cmd => {
-                        // Cmd+Space for command palette
+                    "Space" if event.keystroke.modifiers.control => {
+                        // Ctrl/Cmd+Space for command palette
                         this.command_palette.update(cx, |palette, cx| {
                             palette.toggle(window, cx);
                         });
@@ -303,8 +303,8 @@ impl Render for Desktop {
                         // Alt+Tab for window switching
                         // TODO: Implement window switcher
                     }
-                    "d" if event.keystroke.modifiers.cmd => {
-                        // Cmd+D to create demo window
+                    "d" if event.keystroke.modifiers.control => {
+                        // Ctrl/Cmd+D to create demo window
                         this.create_demo_window(window, cx);
                     }
                     _ => {}
