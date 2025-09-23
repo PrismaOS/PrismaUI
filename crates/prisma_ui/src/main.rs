@@ -11,48 +11,55 @@ pub use assets::Assets;
 use desktop::Desktop;
 
 fn main() {
-    let app = Application::new().with_assets(Assets);
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .expect("Failed to create Tokio runtime");
 
-    app.run(move |cx| {
-        gpui_component::init(cx);
-        cx.activate(true);
+    runtime.block_on(async {
+        let app = Application::new().with_assets(Assets);
 
-        // Set up main OS window - fullscreen composite surface
-        let mut window_size = size(px(1920.), px(1080.));
-        if let Some(display) = cx.primary_display() {
-            window_size = display.bounds().size;
-        }
-        let window_bounds = Bounds::from_corners(Point::default(), Point { x: window_size.width, y: window_size.height });
+        app.run(move |cx| {
+            gpui_component::init(cx);
+            cx.activate(true);
 
-        cx.spawn(async move |cx| {
-            let options = WindowOptions {
-                window_bounds: Some(WindowBounds::Windowed(window_bounds)),
-                titlebar: None,
-                window_decorations: Some(gpui::WindowDecorations::Client),
-                window_min_size: Some(gpui::Size {
-                    width: px(1024.),
-                    height: px(768.),
-                }),
-                kind: WindowKind::PopUp,
-                ..Default::default()
-            };
+            // Set up main OS window - fullscreen composite surface
+            let mut window_size = size(px(1920.), px(1080.));
+            if let Some(display) = cx.primary_display() {
+                window_size = display.bounds().size;
+            }
+            let window_bounds = Bounds::from_corners(Point::default(), Point { x: window_size.width, y: window_size.height });
 
-            let window = cx
-                .open_window(options, |window, cx| {
-                    let desktop = cx.new(|cx| Desktop::new(window, cx));
-                    cx.new(|cx| Root::new(desktop.into(), window, cx))
-                })
-                .expect("failed to open main OS window");
+            cx.spawn(async move |cx| {
+                let options = WindowOptions {
+                    window_bounds: Some(WindowBounds::Windowed(window_bounds)),
+                    titlebar: None,
+                    window_decorations: Some(gpui::WindowDecorations::Client),
+                    window_min_size: Some(gpui::Size {
+                        width: px(1024.),
+                        height: px(768.),
+                    }),
+                    kind: WindowKind::PopUp,
+                    ..Default::default()
+                };
 
-            window
-                .update(cx, |_, window, _| {
-                    window.activate_window();
-                    window.set_window_title("PrismaUI OS");
-                })
-                .expect("failed to update window");
+                let window = cx
+                    .open_window(options, |window, cx| {
+                        let desktop = cx.new(|cx| Desktop::new(window, cx));
+                        cx.new(|cx| Root::new(desktop.into(), window, cx))
+                    })
+                    .expect("failed to open main OS window");
 
-            Ok::<_, anyhow::Error>(())
-        })
-        .detach();
+                window
+                    .update(cx, |_, window, _| {
+                        window.activate_window();
+                        window.set_window_title("PrismaUI OS");
+                    })
+                    .expect("failed to update window");
+
+                Ok::<_, anyhow::Error>(())
+            })
+            .detach();
+        });
     });
 }

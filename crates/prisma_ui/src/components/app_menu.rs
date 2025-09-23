@@ -1,7 +1,7 @@
 /// App menu component - Windows Start Menu / macOS Dock hybrid
 use gpui::{
-    div, px, Action, Axis, Context, Entity, FocusHandle, Focusable,
-    InteractiveElement, IntoElement, ParentElement, Render, Styled, Window, AppContext
+    div, px, Action, Context, Entity, EventEmitter, FocusHandle, Focusable,
+    IntoElement, ParentElement, Render, Styled, Window, AppContext
 };
 use gpui::prelude::FluentBuilder;
 use gpui_component::{
@@ -217,12 +217,14 @@ impl AppMenu {
     }
 
     /// Launch an application
-    pub fn launch_app(&mut self, app_id: &str, _: &mut Window, cx: &mut Context<Self>) {
+    pub fn launch_app(&mut self, app_id: &str, window: &mut Window, cx: &mut Context<Self>) {
         if let Some(app) = self.apps.get_mut(app_id) {
             // Mark as recently used
             app.recently_used = true;
 
-            // TODO: Actually launch the application
+            // Emit event to desktop to create the application window
+            cx.emit(AppMenuAction::LaunchApp(app_id.to_string()));
+
             tracing::info!("Launching app: {} ({})", app.name, app.executable_path);
 
             // Close menu after launching
@@ -323,13 +325,14 @@ impl AppMenu {
         ];
 
         v_flex()
-            .w(px(200.0))
+            .w(px(180.0))
             .h_full()
-            .bg(cx.theme().sidebar)
+            .bg(cx.theme().sidebar.opacity(0.8))
             .border_r_1()
-            .border_color(cx.theme().border)
-            .p_2()
-            .gap_1()
+            .border_color(cx.theme().border.opacity(0.5))
+            .p_3()
+            .gap_2()
+            .scrollable(gpui::Axis::Vertical)
             .children(categories.iter().cloned().enumerate().map(|(idx, category)| {
                 let is_active = category == self.active_category;
                 let count = self.categories.get(&category).map_or(0, |apps| apps.len());
@@ -338,6 +341,8 @@ impl AppMenu {
                     .w_full()
                     .ghost()
                     .justify_start()
+                    .px_3()
+                    .py_2()
                     .when(is_active, |btn| btn.selected(true))
                     .child(
                         h_flex()
@@ -347,19 +352,34 @@ impl AppMenu {
                             .child(
                                 h_flex()
                                     .items_center()
-                                    .gap_2()
-                                    .child(Icon::new(category.icon()).size_4())
-                                    .child(category.display_name().to_string())
+                                    .gap_3()
+                                    .child(Icon::new(category.icon()).size_4().text_color(
+                                        if is_active { cx.theme().primary } else { cx.theme().muted_foreground }
+                                    ))
+                                    .child(
+                                        div()
+                                            .text_sm()
+                                            .font_medium()
+                                            .text_color(
+                                                if is_active { cx.theme().foreground } else { cx.theme().muted_foreground }
+                                            )
+                                            .child(category.display_name().to_string())
+                                    )
                             )
                             .when(count > 0, |this| {
                                 this.child(
                                     div()
-                                        .bg(cx.theme().muted)
-                                        .text_color(cx.theme().muted_foreground)
+                                        .bg(if is_active { cx.theme().primary } else { cx.theme().muted })
+                                        .text_color(if is_active { cx.theme().primary_foreground } else { cx.theme().muted_foreground })
                                         .px_2()
                                         .py_1()
                                         .rounded_full()
                                         .text_xs()
+                                        .font_medium()
+                                        .min_w(px(20.0))
+                                        .flex()
+                                        .items_center()
+                                        .justify_center()
                                         .child(count.to_string())
                                 )
                             })
@@ -373,25 +393,34 @@ impl AppMenu {
     fn render_app_grid(&self, cx: &mut Context<Self>) -> impl IntoElement {
         v_flex()
             .flex_1()
+            .h_full()
             .p_4()
-            .gap_3()
+            .gap_4()
             .child(
                 // Search bar
                 TextInput::new(&self.search_input)
                     .w_full()
+                    .h(px(40.0))
             )
             .child(
                 // App grid
                 div()
                     .flex_1()
-                    .scrollable(Axis::Vertical)
+                    .w_full()
+                    .scrollable(gpui::Axis::Vertical)
                     .child(
                         div()
                             .grid()
-                            .grid_cols(4)
-                            .gap_3()
+                            .grid_cols(5) // More columns for better space utilization
+                            .gap_4()
+                            .p_2()
                             .children(self.filtered_apps.iter().enumerate().map(|(idx, app)| {
                                 Button::new(("app", idx))
+                                    .ghost()
+                                    .p_3()
+                                    .rounded(cx.theme().radius)
+                                    .w_full()
+                                    .h(px(100.0))
                                     .on_click({
                                         let app_id = app.id.clone();
                                         cx.listener(move |this, _, window, cx| {
@@ -400,32 +429,30 @@ impl AppMenu {
                                     })
                                     .child(
                                         v_flex()
+                                            .size_full()
                                             .items_center()
+                                            .justify_center()
                                             .gap_2()
                                             .child(
                                                 div()
-                                                    .size_12()
+                                                    .size(px(48.0))
                                                     .flex()
                                                     .items_center()
                                                     .justify_center()
                                                     .bg(cx.theme().primary.opacity(0.1))
                                                     .text_color(cx.theme().primary)
                                                     .rounded(cx.theme().radius)
+                                                    .shadow_sm()
                                                     .child(Icon::new(app.icon.clone()).size_6())
                                             )
                                             .child(
                                                 div()
-                                                    .text_sm()
-                                                    .font_semibold()
-                                                    .text_center()
-                                                    .child(app.name.clone())
-                                            )
-                                            .child(
-                                                div()
                                                     .text_xs()
-                                                    .text_color(cx.theme().muted_foreground)
+                                                    .font_medium()
                                                     .text_center()
-                                                    .child(app.description.clone())
+                                                    .text_color(cx.theme().foreground)
+                                                    .line_clamp(2)
+                                                    .child(app.name.clone())
                                             )
                                     )
                             }))
@@ -433,6 +460,8 @@ impl AppMenu {
             )
     }
 }
+
+impl EventEmitter<AppMenuAction> for AppMenu {}
 
 impl Focusable for AppMenu {
     fn focus_handle(&self, _: &gpui::App) -> FocusHandle {
@@ -446,17 +475,19 @@ impl Render for AppMenu {
             return div(); // Hidden when closed
         }
 
-        // Full-screen overlay
+        // Windows 11 style start menu - positioned in lower left
         div()
             .absolute()
-            .bottom_0()
-            .left_0()
-            .w_full()
-            .h(px(600.0))
-            .bg(cx.theme().background)
-            .border_t_1()
+            .bottom(px(56.0)) // Above taskbar
+            .left(px(12.0)) // Left aligned like Windows 11
+            .w(px(640.0))
+            .h(px(700.0))
+            .bg(cx.theme().background.opacity(0.95))
+            .border_1()
             .border_color(cx.theme().border)
-            .shadow_xl()
+            .rounded(cx.theme().radius)
+            .shadow_2xl()
+            .overflow_hidden()
             .child(
                 h_flex()
                     .size_full()

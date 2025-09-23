@@ -4,12 +4,12 @@ use gpui::{
     IntoElement, ParentElement, Point, Render, Size, Styled, Window, AppContext
 };
 use gpui::prelude::FluentBuilder;
-use gpui_component::{button::{Button, ButtonVariants as _}, ActiveTheme, StyledExt};
+use gpui_component::{ActiveTheme, StyledExt};
 use serde::{Deserialize, Serialize};
 
 use crate::{
     window_manager::{WindowManager, WindowEvent},
-    components::{AppMenu, CommandPalette, Taskbar, Wallpaper},
+    components::{AppMenu, CommandPalette, Taskbar, Wallpaper, app_menu::AppMenuAction},
     shell::SystemShell,
 };
 
@@ -54,6 +54,8 @@ pub struct Desktop {
     locked: bool,
     /// Focus handle for the desktop
     focus_handle: FocusHandle,
+    /// Pending app launch requests
+    pending_app_launches: Vec<String>,
 }
 
 impl Desktop {
@@ -103,8 +105,14 @@ impl Desktop {
         })
         .detach();
 
+        // Subscribe to app menu events
+        cx.subscribe(&app_menu, |this, app_menu, event: &AppMenuAction, cx| {
+            this.handle_app_menu_event(app_menu, event, cx);
+        })
+        .detach();
+
         // Set up periodic time updates for taskbar
-        cx.spawn(async move |desktop, mut cx| {
+        cx.spawn(async move |desktop, cx| {
             loop {
                 tokio::time::sleep(std::time::Duration::from_secs(60)).await;
                 _ = desktop.update(cx, |desktop, cx| {
@@ -126,6 +134,7 @@ impl Desktop {
             taskbar,
             locked: false,
             focus_handle: cx.focus_handle(),
+            pending_app_launches: Vec::new(),
         }
     }
 
@@ -148,6 +157,21 @@ impl Desktop {
             WindowEvent::Moved { .. } | WindowEvent::Resized { .. } => {
                 // Update for potential effects
                 cx.notify();
+            }
+            _ => {}
+        }
+    }
+
+    /// Handle app menu events
+    fn handle_app_menu_event(
+        &mut self,
+        _app_menu: Entity<AppMenu>,
+        event: &AppMenuAction,
+        cx: &mut Context<Self>,
+    ) {
+        match event {
+            AppMenuAction::LaunchApp(app_id) => {
+                self.launch_application(app_id, cx);
             }
             _ => {}
         }
@@ -220,6 +244,105 @@ impl Desktop {
         self.bounds
     }
 
+    /// Launch an application by ID
+    fn launch_application(&mut self, app_id: &str, cx: &mut Context<Self>) {
+        self.pending_app_launches.push(app_id.to_string());
+        tracing::info!("Queuing application launch: {}", app_id);
+        cx.notify();
+    }
+
+    /// Process pending app launches - called from render where we have window access
+    fn process_pending_launches(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let launches = std::mem::take(&mut self.pending_app_launches);
+
+        for app_id in launches {
+            match app_id.as_str() {
+                "terminal" => {
+                    let content = cx.new(|_| TerminalApp::new());
+                    self.create_app_window(
+                        "Terminal".to_string(),
+                        content,
+                        Some(Bounds {
+                            origin: Point { x: px(200.0), y: px(150.0) },
+                            size: size(px(800.0), px(600.0)),
+                        }),
+                        window,
+                        cx,
+                    );
+                }
+                "code_editor" => {
+                    let content = cx.new(|_| CodeEditorApp::new());
+                    self.create_app_window(
+                        "Code Editor".to_string(),
+                        content,
+                        Some(Bounds {
+                            origin: Point { x: px(150.0), y: px(100.0) },
+                            size: size(px(1000.0), px(700.0)),
+                        }),
+                        window,
+                        cx,
+                    );
+                }
+                "file_manager" => {
+                    let content = cx.new(|_| FileManagerApp::new());
+                    self.create_app_window(
+                        "File Manager".to_string(),
+                        content,
+                        Some(Bounds {
+                            origin: Point { x: px(300.0), y: px(200.0) },
+                            size: size(px(900.0), px(600.0)),
+                        }),
+                        window,
+                        cx,
+                    );
+                }
+                "web_browser" => {
+                    let content = cx.new(|_| WebBrowserApp::new());
+                    self.create_app_window(
+                        "Web Browser".to_string(),
+                        content,
+                        Some(Bounds {
+                            origin: Point { x: px(100.0), y: px(50.0) },
+                            size: size(px(1200.0), px(800.0)),
+                        }),
+                        window,
+                        cx,
+                    );
+                }
+                "calculator" => {
+                    let content = cx.new(|_| CalculatorApp::new());
+                    self.create_app_window(
+                        "Calculator".to_string(),
+                        content,
+                        Some(Bounds {
+                            origin: Point { x: px(400.0), y: px(250.0) },
+                            size: size(px(400.0), px(500.0)),
+                        }),
+                        window,
+                        cx,
+                    );
+                }
+                "settings" => {
+                    let content = cx.new(|_| SettingsApp::new());
+                    self.create_app_window(
+                        "System Settings".to_string(),
+                        content,
+                        Some(Bounds {
+                            origin: Point { x: px(250.0), y: px(150.0) },
+                            size: size(px(800.0), px(600.0)),
+                        }),
+                        window,
+                        cx,
+                    );
+                }
+                _ => {
+                    // Default demo app for unknown IDs
+                    self.create_demo_window(window, cx);
+                }
+            }
+        }
+    }
+
     /// Create a demo application window for testing
     pub fn create_demo_window(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         // Create a simple demo app content
@@ -248,6 +371,9 @@ impl Focusable for Desktop {
 
 impl Render for Desktop {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        // Process any pending app launches
+        self.process_pending_launches(window, cx);
+
         div()
             .size_full()
             .relative()
@@ -326,7 +452,7 @@ impl DemoApp {
 
 impl Render for DemoApp {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        use gpui_component::{v_flex, button::Button};
+        use gpui_component::{v_flex, button::{Button, ButtonVariants as _}};
 
         v_flex()
             .size_full()
@@ -362,6 +488,410 @@ impl Render for DemoApp {
                     .text_sm()
                     .text_color(cx.theme().muted_foreground)
                     .child("This is a demo window to test the window management system.")
+            )
+    }
+}
+
+/// Terminal Application
+pub struct TerminalApp {
+    commands: Vec<String>,
+    current_command: String,
+}
+
+impl TerminalApp {
+    pub fn new() -> Self {
+        Self {
+            commands: vec![
+                "Welcome to PrismaUI Terminal".to_string(),
+                "Type 'help' for available commands".to_string(),
+            ],
+            current_command: String::new(),
+        }
+    }
+}
+
+impl Render for TerminalApp {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        use gpui_component::{v_flex, h_flex};
+
+        v_flex()
+            .size_full()
+            .bg(gpui::black())
+            .text_color(gpui::green())
+            .p_4()
+            .gap_2()
+            .child(
+                div()
+                    .text_lg()
+                    .font_bold()
+                    .text_color(gpui::white())
+                    .child("Terminal")
+            )
+            .child(
+                div()
+                    .flex_1()
+                    .w_full()
+                    .child(
+                        v_flex()
+                            .gap_1()
+                            .children(self.commands.iter().map(|cmd| {
+                                div()
+                                    .text_sm()
+                                    .font_family("Monaco")
+                                    .child(format!("$ {}", cmd))
+                            }))
+                    )
+            )
+            .child(
+                h_flex()
+                    .items_center()
+                    .gap_2()
+                    .child(
+                        div()
+                            .text_sm()
+                            .font_family("Monaco")
+                            .child("$ _")
+                    )
+            )
+    }
+}
+
+/// Code Editor Application
+pub struct CodeEditorApp {
+    content: String,
+}
+
+impl CodeEditorApp {
+    pub fn new() -> Self {
+        Self {
+            content: "// Welcome to PrismaUI Code Editor\nfn main() {\n    println!(\"Hello, World!\");\n}".to_string(),
+        }
+    }
+}
+
+impl Render for CodeEditorApp {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        use gpui_component::{v_flex, h_flex, button::{Button, ButtonVariants as _}};
+
+        v_flex()
+            .size_full()
+            .bg(cx.theme().background)
+            .child(
+                // Toolbar
+                h_flex()
+                    .h(px(40.0))
+                    .items_center()
+                    .px_4()
+                    .bg(cx.theme().sidebar)
+                    .border_b_1()
+                    .border_color(cx.theme().border)
+                    .gap_2()
+                    .child(Button::new("file").ghost().label("File"))
+                    .child(Button::new("edit").ghost().label("Edit"))
+                    .child(Button::new("view").ghost().label("View"))
+            )
+            .child(
+                // Editor area
+                div()
+                    .flex_1()
+                    .p_4()
+                    .bg(cx.theme().card)
+                    .child(
+                        div()
+                            .text_sm()
+                            .font_family("Monaco")
+                            .text_color(cx.theme().foreground)
+                            .child(self.content.clone())
+                    )
+            )
+    }
+}
+
+/// File Manager Application
+pub struct FileManagerApp {
+    current_path: String,
+    files: Vec<String>,
+}
+
+impl FileManagerApp {
+    pub fn new() -> Self {
+        Self {
+            current_path: "/home/user".to_string(),
+            files: vec![
+                "Documents".to_string(),
+                "Downloads".to_string(),
+                "Pictures".to_string(),
+                "Videos".to_string(),
+                "Music".to_string(),
+            ],
+        }
+    }
+}
+
+impl Render for FileManagerApp {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        use gpui_component::{v_flex, h_flex, button::{Button, ButtonVariants as _}, Icon, IconName};
+
+        v_flex()
+            .size_full()
+            .bg(cx.theme().background)
+            .child(
+                // Toolbar
+                h_flex()
+                    .h(px(40.0))
+                    .items_center()
+                    .px_4()
+                    .bg(cx.theme().sidebar)
+                    .border_b_1()
+                    .border_color(cx.theme().border)
+                    .gap_2()
+                    .child(Button::new("back").ghost().child(Icon::new(IconName::ArrowLeft).size_4()))
+                    .child(Button::new("forward").ghost().child(Icon::new(IconName::ArrowRight).size_4()))
+                    .child(
+                        div()
+                            .flex_1()
+                            .px_3()
+                            .py_1()
+                            .bg(cx.theme().input)
+                            .border_1()
+                            .border_color(cx.theme().border)
+                            .rounded(cx.theme().radius)
+                            .child(self.current_path.clone())
+                    )
+            )
+            .child(
+                // File list
+                div()
+                    .flex_1()
+                    .p_4()
+                    .child(
+                        v_flex()
+                            .gap_2()
+                            .children(self.files.iter().map(|file| {
+                                h_flex()
+                                    .items_center()
+                                    .gap_3()
+                                    .p_2()
+                                    .rounded(cx.theme().radius)
+                                    .hover(|style| style.bg(cx.theme().accent.opacity(0.1)))
+                                    .child(Icon::new(IconName::Folder).size_5().text_color(cx.theme().primary))
+                                    .child(file.clone())
+                            }))
+                    )
+            )
+    }
+}
+
+/// Web Browser Application
+pub struct WebBrowserApp {
+    url: String,
+    title: String,
+}
+
+impl WebBrowserApp {
+    pub fn new() -> Self {
+        Self {
+            url: "https://prismaui.dev".to_string(),
+            title: "Welcome to PrismaUI".to_string(),
+        }
+    }
+}
+
+impl Render for WebBrowserApp {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        use gpui_component::{v_flex, h_flex, button::{Button, ButtonVariants as _}, Icon, IconName};
+
+        v_flex()
+            .size_full()
+            .bg(cx.theme().background)
+            .child(
+                // Browser toolbar
+                h_flex()
+                    .h(px(50.0))
+                    .items_center()
+                    .px_4()
+                    .bg(cx.theme().sidebar)
+                    .border_b_1()
+                    .border_color(cx.theme().border)
+                    .gap_2()
+                    .child(Button::new("back").ghost().child(Icon::new(IconName::ArrowLeft).size_4()))
+                    .child(Button::new("forward").ghost().child(Icon::new(IconName::ArrowRight).size_4()))
+                    .child(Button::new("refresh").ghost().child(Icon::new(IconName::RotateCcw).size_4()))
+                    .child(
+                        div()
+                            .flex_1()
+                            .px_3()
+                            .py_2()
+                            .bg(cx.theme().input)
+                            .border_1()
+                            .border_color(cx.theme().border)
+                            .rounded_full()
+                            .child(self.url.clone())
+                    )
+                    .child(Button::new("menu").ghost().child(Icon::new(IconName::Menu).size_4()))
+            )
+            .child(
+                // Page content
+                div()
+                    .flex_1()
+                    .p_8()
+                    .bg(gpui::white())
+                    .text_color(gpui::black())
+                    .child(
+                        v_flex()
+                            .gap_4()
+                            .child(
+                                div()
+                                    .text_3xl()
+                                    .font_bold()
+                                    .child(&self.title)
+                            )
+                            .child(
+                                div()
+                                    .text_lg()
+                                    .child("This is a simulated web browser showing content for PrismaUI.")
+                            )
+                    )
+            )
+    }
+}
+
+/// Calculator Application
+pub struct CalculatorApp {
+    display: String,
+    last_operation: Option<String>,
+}
+
+impl CalculatorApp {
+    pub fn new() -> Self {
+        Self {
+            display: "0".to_string(),
+            last_operation: None,
+        }
+    }
+}
+
+impl Render for CalculatorApp {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        use gpui_component::{v_flex, h_flex, button::{Button, ButtonVariants as _}};
+
+        v_flex()
+            .size_full()
+            .bg(cx.theme().background)
+            .p_4()
+            .gap_4()
+            .child(
+                // Display
+                div()
+                    .h(px(80.0))
+                    .w_full()
+                    .bg(cx.theme().card)
+                    .border_1()
+                    .border_color(cx.theme().border)
+                    .rounded(cx.theme().radius)
+                    .flex()
+                    .items_center()
+                    .justify_end()
+                    .px_4()
+                    .child(
+                        div()
+                            .text_2xl()
+                            .font_family("Monaco")
+                            .text_color(cx.theme().foreground)
+                            .child(&self.display)
+                    )
+            )
+            .child(
+                // Button grid
+                v_flex()
+                    .gap_2()
+                    .children((0..4).map(|row| {
+                        h_flex()
+                            .gap_2()
+                            .children((0..4).map(|col| {
+                                let button_text = match (row, col) {
+                                    (0, 0) => "C", (0, 1) => "±", (0, 2) => "%", (0, 3) => "÷",
+                                    (1, 0) => "7", (1, 1) => "8", (1, 2) => "9", (1, 3) => "×",
+                                    (2, 0) => "4", (2, 1) => "5", (2, 2) => "6", (2, 3) => "−",
+                                    (3, 0) => "1", (3, 1) => "2", (3, 2) => "3", (3, 3) => "+",
+                                    _ => "0"
+                                };
+
+                                Button::new(("calc", row, col))
+                                    .size(px(60.0))
+                                    .ghost()
+                                    .child(button_text)
+                            }))
+                    }))
+            )
+    }
+}
+
+/// Settings Application
+pub struct SettingsApp {
+    active_section: String,
+}
+
+impl SettingsApp {
+    pub fn new() -> Self {
+        Self {
+            active_section: "General".to_string(),
+        }
+    }
+}
+
+impl Render for SettingsApp {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        use gpui_component::{v_flex, h_flex, button::{Button, ButtonVariants as _}, Icon, IconName, Selectable as _};
+
+        h_flex()
+            .size_full()
+            .bg(cx.theme().background)
+            .child(
+                // Settings sidebar
+                v_flex()
+                    .w(px(200.0))
+                    .h_full()
+                    .bg(cx.theme().sidebar)
+                    .border_r_1()
+                    .border_color(cx.theme().border)
+                    .p_3()
+                    .gap_2()
+                    .children(["General", "Display", "Audio", "Network", "Privacy", "Updates"].iter().enumerate().map(|(idx, section)| {
+                        let is_active = section == &self.active_section;
+                        Button::new(("setting", idx))
+                            .w_full()
+                            .ghost()
+                            .justify_start()
+                            .when(is_active, |btn| btn.selected(true))
+                            .child(
+                                h_flex()
+                                    .items_center()
+                                    .gap_3()
+                                    .child(Icon::new(IconName::Settings).size_4())
+                                    .child(section.to_string())
+                            )
+                    }))
+            )
+            .child(
+                // Settings content
+                v_flex()
+                    .flex_1()
+                    .p_6()
+                    .gap_4()
+                    .child(
+                        div()
+                            .text_2xl()
+                            .font_bold()
+                            .text_color(cx.theme().foreground)
+                            .child(self.active_section.clone())
+                    )
+                    .child(
+                        div()
+                            .text_base()
+                            .text_color(cx.theme().muted_foreground)
+                            .child(format!("Configure {} settings for your system.", self.active_section.to_lowercase()))
+                    )
             )
     }
 }
