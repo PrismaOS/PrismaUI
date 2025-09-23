@@ -61,6 +61,8 @@ pub enum SnapZone {
 pub struct WindowManager {
     /// All managed windows
     windows: HashMap<WindowId, Entity<ManagedWindow>>,
+    /// Cached window bounds to avoid reading during events
+    window_bounds: HashMap<WindowId, Bounds<Pixels>>,
     /// Currently focused window
     focused_window: Option<WindowId>,
     /// Desktop bounds for window positioning
@@ -101,6 +103,7 @@ impl WindowManager {
     pub fn new(desktop_bounds: Bounds<Pixels>, cx: &mut App) -> Entity<Self> {
         cx.new(|cx| Self {
             windows: HashMap::new(),
+            window_bounds: HashMap::new(),
             focused_window: None,
             desktop_bounds,
             dragging_window: None,
@@ -144,6 +147,7 @@ impl WindowManager {
         ));
 
         self.windows.insert(id, managed_window);
+        self.window_bounds.insert(id, bounds);
         self.focus_window(id, window, cx);
 
         cx.emit(WindowEvent::Focused(id));
@@ -174,6 +178,7 @@ impl WindowManager {
     /// Close a window
     pub fn close_window(&mut self, id: WindowId, _window: &mut Window, cx: &mut Context<Self>) {
         if let Some(_) = self.windows.remove(&id) {
+            self.window_bounds.remove(&id);
             if self.focused_window == Some(id) {
                 self.focused_window = None;
                 // Focus another window if available
@@ -246,11 +251,15 @@ impl WindowManager {
             .collect()
     }
 
+    /// Update cached bounds for a window
+    fn update_window_bounds(&mut self, window_id: WindowId, new_bounds: Bounds<Pixels>) {
+        self.window_bounds.insert(window_id, new_bounds);
+    }
+
     /// Start dragging a window
     fn start_drag(&mut self, window_id: WindowId, mouse_pos: Point<Pixels>, cx: &mut Context<Self>) {
-        if let Some(managed_window) = self.windows.get(&window_id) {
-            let window_bounds = managed_window.read(cx).bounds;
-            // Calculate offset from mouse position to window origin
+        if let Some(&window_bounds) = self.window_bounds.get(&window_id) {
+            // Calculate offset from mouse position to window origin using cached bounds
             self.drag_offset = Point {
                 x: mouse_pos.x - window_bounds.origin.x,
                 y: mouse_pos.y - window_bounds.origin.y,
@@ -415,6 +424,7 @@ impl WindowManager {
                 w.restored_bounds = w.bounds;
                 w.set_bounds(new_bounds, cx);
             });
+            self.update_window_bounds(window_id, new_bounds);
         }
     }
 }
@@ -437,28 +447,32 @@ impl Render for WindowManager {
         // Process pending drag position update to avoid reentrancy
         if let (Some(mouse_position), Some(window_id)) = (self.pending_drag_position.take(), self.dragging_window) {
             if let Some(managed_window) = self.windows.get(&window_id) {
-                managed_window.update(cx, |w, cx| {
-                    let mut new_bounds = w.bounds;
+                let new_bounds = {
+                    let old_bounds = self.window_bounds.get(&window_id).copied().unwrap_or_default();
+                    let mut new_bounds = old_bounds;
                     // Apply the drag offset to maintain relative position
                     new_bounds.origin = Point {
                         x: mouse_position.x - self.drag_offset.x,
                         y: mouse_position.y - self.drag_offset.y,
                     };
+                    new_bounds
+                };
+
+                // Update both the actual window and cached bounds
+                managed_window.update(cx, |w, cx| {
                     w.set_bounds(new_bounds, cx);
                 });
-                let new_origin = Point {
-                    x: mouse_position.x - self.drag_offset.x,
-                    y: mouse_position.y - self.drag_offset.y,
-                };
-                cx.emit(WindowEvent::Moved { id: window_id, position: new_origin });
+                self.update_window_bounds(window_id, new_bounds);
+
+                cx.emit(WindowEvent::Moved { id: window_id, position: new_bounds.origin });
             }
         }
 
         // Process pending resize update to avoid reentrancy
         if let Some((window_id, mouse_pos, handle)) = self.pending_resize_data.take() {
             if let Some(managed_window) = self.windows.get(&window_id) {
-                managed_window.update(cx, |w, cx| {
-                    let old_bounds = w.bounds;
+                let new_bounds = {
+                    let old_bounds = self.window_bounds.get(&window_id).copied().unwrap_or_default();
                     let mut new_bounds = old_bounds;
 
                     match handle {
@@ -504,31 +518,34 @@ impl Render for WindowManager {
                         },
                     }
 
+                    new_bounds
+                };
+
+                // Update both the actual window and cached bounds
+                managed_window.update(cx, |w, cx| {
                     w.set_bounds(new_bounds, cx);
                 });
-                // Get the updated bounds for the event
-                if let Some(managed_window) = self.windows.get(&window_id) {
-                    let bounds = managed_window.read(cx).bounds;
-                    cx.emit(WindowEvent::Resized { id: window_id, size: bounds.size });
-                }
+                self.update_window_bounds(window_id, new_bounds);
+
+                cx.emit(WindowEvent::Resized { id: window_id, size: new_bounds.size });
             }
         }
 
         // Sort windows by focus state (focused windows on top)
-        let mut windows: Vec<_> = self.windows.values().cloned().collect();
-        windows.sort_by_key(|window| {
-            let is_focused = window.read(cx).focused;
-            !is_focused // Sort focused windows last (on top)
-        });
+        // Create a vector of (window, is_focused) to avoid reading during render
+        let mut window_data: Vec<_> = self.windows.iter().map(|(&id, window)| {
+            (window.clone(), id == self.focused_window.unwrap_or_default())
+        }).collect();
+        window_data.sort_by_key(|(_, is_focused)| !is_focused);
+        let windows: Vec<_> = window_data.into_iter().map(|(window, _)| window).collect();
 
         div()
             .absolute()
             .size_full()
             .children(windows)
             .on_mouse_down(MouseButton::Left, cx.listener(|this, event: &MouseDownEvent, _window, cx| {
-                // Check if clicking on a window - defer focus to avoid reentrancy
-                for (&id, managed_window) in &this.windows {
-                    let bounds = managed_window.read(cx).bounds;
+                // Check if clicking on a window using cached bounds - no entity reads needed!
+                for (&id, &bounds) in &this.window_bounds {
                     if bounds.contains(&event.position) {
                         this.pending_focus_window = Some(id);
                         cx.notify();
