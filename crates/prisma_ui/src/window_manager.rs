@@ -229,6 +229,29 @@ impl WindowManager {
         }
     }
 
+    /// Restore a minimized window
+    pub fn restore_window(&mut self, id: WindowId, window: &mut Window, cx: &mut Context<Self>) {
+        if let Some(managed_window) = self.windows.get(&id) {
+            managed_window.update(cx, |w, cx| {
+                w.set_minimized(false, cx);
+            });
+            self.focus_window(id, window, cx);
+            cx.notify();
+        }
+    }
+
+    /// Focus a window and restore it if minimized (for taskbar clicks)
+    pub fn focus_or_restore_window(&mut self, id: WindowId, window: &mut Window, cx: &mut Context<Self>) {
+        if let Some(managed_window) = self.windows.get(&id) {
+            let is_minimized = managed_window.read(cx).minimized;
+            if is_minimized {
+                self.restore_window(id, window, cx);
+            } else {
+                self.focus_window(id, window, cx);
+            }
+        }
+    }
+
     /// Maximize/restore a window
     pub fn toggle_maximize_window(&mut self, id: WindowId, _window: &mut Window, cx: &mut Context<Self>) {
         if let Some(window) = self.windows.get(&id) {

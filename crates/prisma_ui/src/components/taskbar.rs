@@ -270,7 +270,7 @@ impl Taskbar {
                         .on_click(cx.listener(move |this, _, window, cx| {
                             if let Some(wm) = &this.window_manager {
                                 wm.update(cx, |wm, cx| {
-                                    wm.focus_window(window_id, window, cx);
+                                    wm.focus_or_restore_window(window_id, window, cx);
                                 });
                             }
                         }))
