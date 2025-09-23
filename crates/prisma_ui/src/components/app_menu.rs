@@ -411,18 +411,18 @@ impl AppMenu {
                     .child(
                         div()
                             .w_full()
-                            .grid()
-                            .grid_cols(4) // 4 columns for better icon size and spacing
-                            .gap_x(px(24.0)) // Horizontal gap between columns
-                            .gap_y(px(20.0)) // Vertical gap between rows
-                            .p_6() // Padding around the entire grid
+                            .flex()
+                            .flex_wrap()
+                            .gap_4()
+                            .p_4()
+                            .justify_start()
                             .children(self.filtered_apps.iter().enumerate().map(|(idx, app)| {
                                 Button::new(("app", idx))
                                     .ghost()
-                                    .p_2() // Reduced padding to prevent overlap
+                                    .p_3()
                                     .rounded(cx.theme().radius)
-                                    .w_full()
-                                    .h(px(110.0)) // Adjusted height for better fit
+                                    .w(px(100.0)) // Fixed width for consistent sizing
+                                    .h(px(100.0)) // Fixed height
                                     .on_click({
                                         let app_id = app.id.clone();
                                         cx.listener(move |this, _, window, cx| {
@@ -434,10 +434,10 @@ impl AppMenu {
                                             .size_full()
                                             .items_center()
                                             .justify_center()
-                                            .gap_3() // Increased gap between icon and text
+                                            .gap_2() // Appropriate gap for fixed size
                                             .child(
                                                 div()
-                                                    .size(px(56.0)) // Larger icon container
+                                                    .size(px(48.0)) // Icon container sized for 100px button
                                                     .flex()
                                                     .items_center()
                                                     .justify_center()
@@ -445,7 +445,7 @@ impl AppMenu {
                                                     .text_color(cx.theme().primary)
                                                     .rounded(cx.theme().radius)
                                                     .shadow_sm()
-                                                    .child(Icon::new(app.icon.clone()).size_7()) // Larger icon
+                                                    .child(Icon::new(app.icon.clone()).size_6()) // Appropriate size
                                             )
                                             .child(
                                                 div()
@@ -459,6 +459,116 @@ impl AppMenu {
                                     )
                             }))
                     )
+            )
+    }
+
+    fn render_user_section(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        h_flex()
+            .w_full()
+            .h(px(70.0))
+            .bg(cx.theme().sidebar.opacity(0.3))
+            .border_b_1()
+            .border_color(cx.theme().border.opacity(0.5))
+            .px_4()
+            .py_3()
+            .items_center()
+            .gap_3()
+            .child(
+                // User avatar placeholder
+                div()
+                    .size(px(48.0))
+                    .bg(cx.theme().primary)
+                    .rounded_full()
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .child(
+                        Icon::new(IconName::User)
+                            .size_6()
+                            .text_color(cx.theme().primary_foreground)
+                    )
+            )
+            .child(
+                v_flex()
+                    .flex_1()
+                    .gap_1()
+                    .child(
+                        div()
+                            .text_base()
+                            .font_semibold()
+                            .text_color(cx.theme().foreground)
+                            .child("PrismaUI User")
+                    )
+                    .child(
+                        div()
+                            .text_xs()
+                            .text_color(cx.theme().muted_foreground)
+                            .child("user@prismaui.dev")
+                    )
+            )
+            .child(
+                Button::new("user-settings")
+                    .ghost()
+                    .size(px(32.0))
+                    .icon(IconName::Settings)
+                    .tooltip("User Settings")
+            )
+    }
+
+    fn render_power_menu(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        h_flex()
+            .w_full()
+            .h(px(60.0))
+            .bg(cx.theme().sidebar.opacity(0.3))
+            .border_t_1()
+            .border_color(cx.theme().border.opacity(0.5))
+            .px_4()
+            .items_center()
+            .justify_end()
+            .gap_2()
+            .child(
+                Button::new("lock")
+                    .ghost()
+                    .size(px(40.0))
+                    .icon(IconName::User)
+                    .tooltip("Lock")
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        // TODO: Implement lock functionality
+                        this.close(cx);
+                    }))
+            )
+            .child(
+                Button::new("sleep")
+                    .ghost()
+                    .size(px(40.0))
+                    .icon(IconName::Moon)
+                    .tooltip("Sleep")
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        // TODO: Implement sleep functionality
+                        this.close(cx);
+                    }))
+            )
+            .child(
+                Button::new("restart")
+                    .ghost()
+                    .size(px(40.0))
+                    .icon(IconName::Folder)
+                    .tooltip("Restart")
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        // TODO: Implement restart functionality
+                        this.close(cx);
+                    }))
+            )
+            .child(
+                Button::new("shutdown")
+                    .ghost()
+                    .size(px(40.0))
+                    .icon(IconName::Settings)
+                    .tooltip("Shutdown")
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        // TODO: Implement shutdown functionality
+                        this.close(cx);
+                    }))
             )
     }
 }
@@ -477,13 +587,13 @@ impl Render for AppMenu {
             return div(); // Hidden when closed
         }
 
-        // Windows 11 style start menu - positioned in lower left
+        // Modern start menu with user and power sections
         div()
             .absolute()
             .bottom(px(56.0)) // Above taskbar
-            .left(px(12.0)) // Left aligned like Windows 11
-            .w(px(640.0))
-            .h(px(700.0))
+            .left(px(12.0)) // Left aligned
+            .w(px(680.0)) // Slightly wider for better layout
+            .h(px(720.0)) // Taller for additional sections
             .bg(cx.theme().background.opacity(0.95))
             .border_1()
             .border_color(cx.theme().border)
@@ -491,10 +601,16 @@ impl Render for AppMenu {
             .shadow_2xl()
             .overflow_hidden()
             .child(
-                h_flex()
+                v_flex()
                     .size_full()
-                    .child(self.render_category_sidebar(cx))
-                    .child(self.render_app_grid(cx))
+                    .child(self.render_user_section(cx))
+                    .child(
+                        h_flex()
+                            .flex_1()
+                            .child(self.render_category_sidebar(cx))
+                            .child(self.render_app_grid(cx))
+                    )
+                    .child(self.render_power_menu(cx))
             )
     }
 }
