@@ -270,6 +270,29 @@ impl WindowManager {
         self.window_bounds.insert(window_id, new_bounds);
     }
 
+    /// Check if a window is the topmost at a given position
+    pub fn is_window_topmost(&self, window_id: WindowId, position: Point<Pixels>) -> bool {
+        let window_z_index = self.window_z_index.get(&window_id).copied().unwrap_or(0);
+
+        // Find all windows that contain this position
+        let mut overlapping_windows: Vec<(WindowId, i32)> = self.window_bounds.iter()
+            .filter_map(|(&id, &bounds)| {
+                if bounds.contains(&position) {
+                    let z_index = self.window_z_index.get(&id).copied().unwrap_or(0);
+                    Some((id, z_index))
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        // Sort by z-index (highest first)
+        overlapping_windows.sort_by_key(|(_, z_index)| -z_index);
+
+        // Check if this window is the topmost
+        overlapping_windows.first().map(|(id, _)| *id == window_id).unwrap_or(false)
+    }
+
     /// Start dragging a window
     fn start_drag(&mut self, window_id: WindowId, mouse_pos: Point<Pixels>, cx: &mut Context<Self>) {
         if let Some(&window_bounds) = self.window_bounds.get(&window_id) {
@@ -558,13 +581,23 @@ impl Render for WindowManager {
             .size_full()
             .children(windows)
             .on_mouse_down(MouseButton::Left, cx.listener(|this, event: &MouseDownEvent, _window, cx| {
-                // Check if clicking on a window using cached bounds - no entity reads needed!
-                for (&id, &bounds) in &this.window_bounds {
-                    if bounds.contains(&event.position) {
-                        this.pending_focus_window = Some(id);
-                        cx.notify();
-                        break;
-                    }
+                // Check windows in z-index order (highest first) to prevent passthrough
+                let mut window_hits: Vec<(WindowId, i32)> = this.window_bounds.iter()
+                    .filter_map(|(&id, &bounds)| {
+                        if bounds.contains(&event.position) {
+                            let z_index = this.window_z_index.get(&id).copied().unwrap_or(0);
+                            Some((id, z_index))
+                        } else {
+                            None
+                        }
+                    })
+                    .collect();
+
+                // Sort by z-index (highest first) and only focus the topmost window
+                window_hits.sort_by_key(|(_, z_index)| -z_index);
+                if let Some((top_window_id, _)) = window_hits.first() {
+                    this.pending_focus_window = Some(*top_window_id);
+                    cx.notify();
                 }
             }))
             .on_mouse_move(cx.listener(|this, event: &MouseMoveEvent, window, cx| {
@@ -656,9 +689,13 @@ impl ManagedWindow {
                     .cursor_nwse_resize()
                     .on_mouse_down(MouseButton::Left, {
                         let wm = window_manager.clone();
-                        cx.listener(move |_, _, _, cx| {
+                        cx.listener(move |_, event: &MouseDownEvent, _, cx| {
                             if let Some(wm) = wm.upgrade() {
-                                wm.update(cx, |wm, cx| wm.start_resize(window_id, ResizeHandle::TopLeft, cx));
+                                // Only start resize if this window is topmost at the click position
+                                let is_topmost = wm.read(cx).is_window_topmost(window_id, event.position);
+                                if is_topmost {
+                                    wm.update(cx, |wm, cx| wm.start_resize(window_id, ResizeHandle::TopLeft, cx));
+                                }
                             }
                         })
                     }),
@@ -671,9 +708,12 @@ impl ManagedWindow {
                     .cursor_nesw_resize()
                     .on_mouse_down(MouseButton::Left, {
                         let wm = window_manager.clone();
-                        cx.listener(move |_, _, _, cx| {
+                        cx.listener(move |_, event: &MouseDownEvent, _, cx| {
                             if let Some(wm) = wm.upgrade() {
-                                wm.update(cx, |wm, cx| wm.start_resize(window_id, ResizeHandle::TopRight, cx));
+                                let is_topmost = wm.read(cx).is_window_topmost(window_id, event.position);
+                                if is_topmost {
+                                    wm.update(cx, |wm, cx| wm.start_resize(window_id, ResizeHandle::TopRight, cx));
+                                }
                             }
                         })
                     }),
@@ -686,9 +726,12 @@ impl ManagedWindow {
                     .cursor_nesw_resize()
                     .on_mouse_down(MouseButton::Left, {
                         let wm = window_manager.clone();
-                        cx.listener(move |_, _, _, cx| {
+                        cx.listener(move |_, event: &MouseDownEvent, _, cx| {
                             if let Some(wm) = wm.upgrade() {
-                                wm.update(cx, |wm, cx| wm.start_resize(window_id, ResizeHandle::BottomLeft, cx));
+                                let is_topmost = wm.read(cx).is_window_topmost(window_id, event.position);
+                                if is_topmost {
+                                    wm.update(cx, |wm, cx| wm.start_resize(window_id, ResizeHandle::BottomLeft, cx));
+                                }
                             }
                         })
                     }),
@@ -701,9 +744,12 @@ impl ManagedWindow {
                     .cursor_nwse_resize()
                     .on_mouse_down(MouseButton::Left, {
                         let wm = window_manager.clone();
-                        cx.listener(move |_, _, _, cx| {
+                        cx.listener(move |_, event: &MouseDownEvent, _, cx| {
                             if let Some(wm) = wm.upgrade() {
-                                wm.update(cx, |wm, cx| wm.start_resize(window_id, ResizeHandle::BottomRight, cx));
+                                let is_topmost = wm.read(cx).is_window_topmost(window_id, event.position);
+                                if is_topmost {
+                                    wm.update(cx, |wm, cx| wm.start_resize(window_id, ResizeHandle::BottomRight, cx));
+                                }
                             }
                         })
                     }),
@@ -717,9 +763,12 @@ impl ManagedWindow {
                     .cursor_ns_resize()
                     .on_mouse_down(MouseButton::Left, {
                         let wm = window_manager.clone();
-                        cx.listener(move |_, _, _, cx| {
+                        cx.listener(move |_, event: &MouseDownEvent, _, cx| {
                             if let Some(wm) = wm.upgrade() {
-                                wm.update(cx, |wm, cx| wm.start_resize(window_id, ResizeHandle::Top, cx));
+                                let is_topmost = wm.read(cx).is_window_topmost(window_id, event.position);
+                                if is_topmost {
+                                    wm.update(cx, |wm, cx| wm.start_resize(window_id, ResizeHandle::Top, cx));
+                                }
                             }
                         })
                     }),
@@ -732,9 +781,12 @@ impl ManagedWindow {
                     .cursor_ns_resize()
                     .on_mouse_down(MouseButton::Left, {
                         let wm = window_manager.clone();
-                        cx.listener(move |_, _, _, cx| {
+                        cx.listener(move |_, event: &MouseDownEvent, _, cx| {
                             if let Some(wm) = wm.upgrade() {
-                                wm.update(cx, |wm, cx| wm.start_resize(window_id, ResizeHandle::Bottom, cx));
+                                let is_topmost = wm.read(cx).is_window_topmost(window_id, event.position);
+                                if is_topmost {
+                                    wm.update(cx, |wm, cx| wm.start_resize(window_id, ResizeHandle::Bottom, cx));
+                                }
                             }
                         })
                     }),
@@ -747,9 +799,12 @@ impl ManagedWindow {
                     .cursor_ew_resize()
                     .on_mouse_down(MouseButton::Left, {
                         let wm = window_manager.clone();
-                        cx.listener(move |_, _, _, cx| {
+                        cx.listener(move |_, event: &MouseDownEvent, _, cx| {
                             if let Some(wm) = wm.upgrade() {
-                                wm.update(cx, |wm, cx| wm.start_resize(window_id, ResizeHandle::Left, cx));
+                                let is_topmost = wm.read(cx).is_window_topmost(window_id, event.position);
+                                if is_topmost {
+                                    wm.update(cx, |wm, cx| wm.start_resize(window_id, ResizeHandle::Left, cx));
+                                }
                             }
                         })
                     }),
@@ -762,9 +817,12 @@ impl ManagedWindow {
                     .cursor_ew_resize()
                     .on_mouse_down(MouseButton::Left, {
                         let wm = window_manager.clone();
-                        cx.listener(move |_, _, _, cx| {
+                        cx.listener(move |_, event: &MouseDownEvent, _, cx| {
                             if let Some(wm) = wm.upgrade() {
-                                wm.update(cx, |wm, cx| wm.start_resize(window_id, ResizeHandle::Right, cx));
+                                let is_topmost = wm.read(cx).is_window_topmost(window_id, event.position);
+                                if is_topmost {
+                                    wm.update(cx, |wm, cx| wm.start_resize(window_id, ResizeHandle::Right, cx));
+                                }
                             }
                         })
                     }),
@@ -790,7 +848,11 @@ impl ManagedWindow {
             .justify_between()
             .on_mouse_down(MouseButton::Left, cx.listener(move |_, event: &MouseDownEvent, _, cx| {
                 if let Some(wm) = wm1.upgrade() {
-                    wm.update(cx, |wm, cx| wm.start_drag(window_id, event.position, cx));
+                    // Only start drag if this window is topmost at the click position
+                    let is_topmost = wm.read(cx).is_window_topmost(window_id, event.position);
+                    if is_topmost {
+                        wm.update(cx, |wm, cx| wm.start_drag(window_id, event.position, cx));
+                    }
                 }
             }))
             .child(
