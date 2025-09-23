@@ -330,12 +330,11 @@ impl AppMenu {
             .border_color(cx.theme().border)
             .p_2()
             .gap_1()
-            .children(categories.iter().cloned().map(|category| {
+            .children(categories.iter().cloned().enumerate().map(|(idx, category)| {
                 let is_active = category == self.active_category;
                 let count = self.categories.get(&category).map_or(0, |apps| apps.len());
-                let button_id = format!("category-{:?}", category);
 
-                Button::new(button_id.as_str())
+                Button::new(("category", idx))
                     .w_full()
                     .ghost()
                     .justify_start()
@@ -391,17 +390,8 @@ impl AppMenu {
                             .grid()
                             .grid_cols(4)
                             .gap_3()
-                            .children(self.filtered_apps.iter().map(|app| {
-                                let app_div_id = format!("app-{}", app.id);
-                                div()
-                                    .id(app_div_id.as_str())
-                                    .p_3()
-                                    .rounded(cx.theme().radius)
-                                    .bg(cx.theme().background)
-                                    .border_1()
-                                    .border_color(cx.theme().border)
-                                    .hover(|this| this.bg(cx.theme().muted))
-                                    .cursor_pointer()
+                            .children(self.filtered_apps.iter().enumerate().map(|(idx, app)| {
+                                Button::new(("app", idx))
                                     .on_click({
                                         let app_id = app.id.clone();
                                         cx.listener(move |this, _, window, cx| {
@@ -421,7 +411,7 @@ impl AppMenu {
                                                     .bg(cx.theme().primary.opacity(0.1))
                                                     .text_color(cx.theme().primary)
                                                     .rounded(cx.theme().radius)
-                                                    .child(Icon::new(app.icon).size_6())
+                                                    .child(Icon::new(app.icon.clone()).size_6())
                                             )
                                             .child(
                                                 div()
