@@ -6,7 +6,7 @@ use gpui::{
 use gpui::prelude::FluentBuilder;
 use gpui_component::{
     button::{Button, ButtonVariants as _},
-    input::{InputState, TextInput},
+    input::{InputEvent, InputState, TextInput},
     v_flex, h_flex, ActiveTheme, Icon, IconName, StyledExt, Selectable
 };
 use serde::Deserialize;
@@ -87,6 +87,17 @@ impl CommandPalette {
             InputState::new(window, cx)
                 .placeholder("Type a command or search...")
         });
+
+        // Subscribe to search input changes
+        cx.subscribe(&search_input, |this, _, event, cx| {
+            match event {
+                InputEvent::Change => {
+                    let query = this.search_input.read(cx).value();
+                    this.search(&query, cx);
+                }
+                _ => {}
+            }
+        }).detach();
 
         let mut this = Self {
             open: false,
@@ -430,19 +441,6 @@ impl Render for CommandPalette {
                                     .child(
                                         TextInput::new(&self.search_input)
                                             .w_full()
-                                            .text_lg()
-                                            .on_input(cx.listener(|this, query, _, cx| {
-                                                this.search(&query, cx);
-                                            }))
-                                            .on_key_down(cx.listener(|this, event, _, cx| {
-                                                match event.keystroke.key.as_str() {
-                                                    "ArrowUp" => this.navigate_up(cx),
-                                                    "ArrowDown" => this.navigate_down(cx),
-                                                    "Enter" => this.execute_selected(cx),
-                                                    "Escape" => this.close(cx),
-                                                    _ => {}
-                                                }
-                                            }))
                                     )
                             )
                             .child(
