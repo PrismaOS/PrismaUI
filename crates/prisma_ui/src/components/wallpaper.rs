@@ -86,11 +86,10 @@ impl Wallpaper {
     fn render_image(&self, path: &str) -> impl IntoElement {
         eprintln!("Wallpaper: Attempting to load image: {}", path);
 
-        // Check if this is the large image file and use a different approach
-        let image = if path == "default_wallpaper.jpg" {
+        // Use the path as given, matching icon loader logic
+        let image = if path.ends_with("default_wallpaper.jpg") {
             eprintln!("Wallpaper: Large image detected, trying alternative approach");
-            // For large images, we might need a different loading strategy
-            img(path).size_full()
+            img(path)
         } else {
             img(path)
         };
