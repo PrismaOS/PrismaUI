@@ -159,11 +159,9 @@ impl Render for SystemShell {
         div()
             .absolute()
             .size_full()
-            .pointer_events_none() // Let events pass through to underlying components
             // Desktop icons
             .child(
                 div()
-                    .pointer_events_auto() // Re-enable events for icons
                     .child(self.render_desktop_icons(cx))
             )
             // Context menu overlay
