@@ -103,7 +103,7 @@ impl Wallpaper {
             )
     }
 
-    fn render_fallback(&self) -> impl IntoElement {
+    fn render_fallback(&self, cx: &mut Context<Self>) -> impl IntoElement {
         div()
             .size_full()
             .bg(self.fallback_color)
@@ -142,7 +142,7 @@ impl Render for Wallpaper {
                         .child(self.render_image(path))
                         .into_any_element()
                 } else {
-                    self.render_fallback().into_any_element()
+                    self.render_fallback(cx).into_any_element()
                 }
             )
             // Add subtle overlay for better contrast with desktop icons

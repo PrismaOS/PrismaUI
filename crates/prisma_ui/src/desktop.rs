@@ -1,6 +1,6 @@
 /// Desktop environment - main shell orchestrating all components
 use gpui::{
-    div, px, size, Bounds, Context, Entity, EventEmitter, FocusHandle, Focusable,
+    div, px, size, Bounds, Context, Entity, EventEmitter, FocusHandle, Focusable, InteractiveElement,
     IntoElement, ParentElement, Point, Render, Size, Styled, Window, AppContext
 };
 use gpui::prelude::FluentBuilder;
