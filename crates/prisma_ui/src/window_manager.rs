@@ -424,6 +424,7 @@ pub struct ManagedWindow {
     pub maximized: bool,
     pub focused: bool,
     focus_handle: FocusHandle,
+    window_manager: WeakEntity<WindowManager>,
 }
 
 impl ManagedWindow {
@@ -432,6 +433,7 @@ impl ManagedWindow {
         title: String,
         content: V,
         bounds: Bounds<Pixels>,
+        window_manager: WeakEntity<WindowManager>,
         cx: &mut Context<Self>,
     ) -> Self {
         Self {
@@ -444,6 +446,7 @@ impl ManagedWindow {
             maximized: false,
             focused: false,
             focus_handle: cx.focus_handle(),
+            window_manager,
         }
     }
 
@@ -546,7 +549,8 @@ impl Render for ManagedWindow {
             return div(); // Hidden when minimized
         }
 
-        let window_manager = cx.view::<WindowManager>().downgrade();
+        // TODO: Fix window manager reference
+        let window_manager = WeakEntity::new();
 
         div()
             .absolute()
