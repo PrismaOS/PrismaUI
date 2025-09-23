@@ -3,9 +3,9 @@ use gpui::{
     div, px, Action, Context, Entity, FocusHandle, Focusable, InteractiveElement,
     IntoElement, ParentElement, Render, Styled, Window, AppContext
 };
+use gpui::prelude::FluentBuilder;
 use gpui_component::{
     input::{InputState, TextInput},
-    modal::Modal,
     v_flex, h_flex, ActiveTheme, Icon, IconName, StyledExt
 };
 use serde::Deserialize;
@@ -365,14 +365,14 @@ impl CommandPalette {
                                     .text_sm()
                                     .font_semibold()
                                     .text_color(if is_selected { cx.theme().accent_foreground } else { cx.theme().foreground })
-                                    .child(&command.title)
+                                    .child(command.title.clone())
                             )
                             .when_some(command.subtitle.as_ref(), |this, subtitle| {
                                 this.child(
                                     div()
                                         .text_xs()
                                         .text_color(if is_selected { cx.theme().accent_foreground.opacity(0.8) } else { cx.theme().muted_foreground })
-                                        .child(subtitle)
+                                        .child(subtitle.clone())
                                 )
                             })
                     )
@@ -405,9 +405,7 @@ impl Render for CommandPalette {
             return div(); // Hidden when closed
         }
 
-        // Center modal overlay
-        Modal::new("command-palette-modal")
-            .child(
+        // Center overlay
                 div()
                     .absolute()
                     .top_0()
@@ -474,9 +472,5 @@ impl Render for CommandPalette {
                                     })
                             )
                     )
-            )
-            .on_click_outside(cx.listener(|this, _, _, cx| {
-                this.close(cx);
-            }))
     }
 }
