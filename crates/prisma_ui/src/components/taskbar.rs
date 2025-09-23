@@ -3,6 +3,7 @@ use gpui::{
     div, px, Context, Entity, FocusHandle, Focusable, AppContext,
     IntoElement, ParentElement, Render, Styled, Window, Bounds, Pixels
 };
+use gpui::prelude::FluentBuilder;
 use gpui_component::{
     button::{Button, ButtonVariants as _}, h_flex, v_flex, ActiveTheme, Icon, IconName, StyledExt
 };
@@ -274,8 +275,8 @@ impl Taskbar {
                                 .top_0()
                                 .right_0()
                                 .size_4()
-                                .bg(cx.theme().destructive)
-                                .text_color(cx.theme().destructive_foreground)
+                                .bg(cx.theme().danger)
+                                .text_color(cx.theme().danger_foreground)
                                 .rounded_full()
                                 .text_xs()
                                 .flex()

@@ -364,7 +364,7 @@ impl CommandPalette {
                             .bg(cx.theme().primary.opacity(0.1))
                             .text_color(cx.theme().primary)
                             .rounded(cx.theme().radius)
-                            .child(Icon::new(command.icon).size_5())
+                            .child(Icon::new(command.icon.clone()).size_5())
                     )
                     .child(
                         v_flex()
