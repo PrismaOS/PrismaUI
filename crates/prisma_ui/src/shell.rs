@@ -72,14 +72,13 @@ impl SystemShell {
             return div();
         }
 
-        use gpui_component::{v_flex, Icon, IconName};
 
         // Sample desktop icons
         let desktop_icons = vec![
-            ("Trash", IconName::Trash2, "Open trash"),
-            ("Computer", IconName::HardDrive, "This computer"),
+            ("Trash", IconName::Menu, "Open trash"),
+            ("Computer", IconName::Settings, "This computer"),
             ("Network", IconName::Globe, "Network locations"),
-            ("Documents", IconName::FileText, "Documents folder"),
+            ("Documents", IconName::Folder, "Documents folder"),
         ];
 
         div()
