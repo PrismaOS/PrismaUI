@@ -3,7 +3,8 @@ use gpui::{
     div, px, size, Bounds, Context, Entity, EventEmitter, FocusHandle, Focusable,
     IntoElement, ParentElement, Point, Render, Size, Styled, Window, AppContext
 };
-use gpui_component::{ActiveTheme, StyledExt};
+use gpui::prelude::FluentBuilder;
+use gpui_component::{button::{Button, ButtonVariants as _}, ActiveTheme, StyledExt};
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -269,8 +270,7 @@ impl Render for Desktop {
                     div()
                         .absolute()
                         .size_full()
-                        .bg(gpui::rgba(0.0, 0.0, 0.0, 0.8))
-                        .backdrop_blur()
+                        .bg(gpui::rgba(0x000000_CC))
                         .flex()
                         .items_center()
                         .justify_center()
