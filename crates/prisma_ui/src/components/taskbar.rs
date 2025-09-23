@@ -223,8 +223,8 @@ impl Taskbar {
 
             h_flex()
                 .gap_1()
-                .children(window_titles.into_iter().map(|(window_id, title)| {
-                    Button::new(("window", window_id))
+                .children(window_titles.into_iter().enumerate().map(|(idx, (window_id, title))| {
+                    Button::new(("window", idx))
                         .ghost()
                         .compact()
                         .max_w(px(200.0))
@@ -261,8 +261,8 @@ impl Taskbar {
     fn render_system_tray(&self, cx: &mut Context<Self>) -> impl IntoElement {
         h_flex()
             .gap_1()
-            .children(self.tray_icons.values().map(|icon| {
-                Button::new(("tray", icon.id))
+            .children(self.tray_icons.values().enumerate().map(|(idx, icon)| {
+                Button::new(("tray", idx))
                     .ghost()
                     .compact()
                     .relative()
