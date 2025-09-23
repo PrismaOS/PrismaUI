@@ -419,7 +419,7 @@ impl Render for WindowManager {
 pub struct ManagedWindow {
     pub id: WindowId,
     pub title: String,
-    pub content: Option<AnyElement>,
+    pub content: AnyElement,
     pub bounds: Bounds<Pixels>,
     pub restored_bounds: Bounds<Pixels>,
     pub minimized: bool,
