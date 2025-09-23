@@ -63,6 +63,10 @@ pub struct WindowManager {
     windows: HashMap<WindowId, Entity<ManagedWindow>>,
     /// Cached window bounds to avoid reading during events
     window_bounds: HashMap<WindowId, Bounds<Pixels>>,
+    /// Window z-index ordering (higher = on top)
+    window_z_index: HashMap<WindowId, i32>,
+    /// Next z-index to assign
+    next_z_index: i32,
     /// Currently focused window
     focused_window: Option<WindowId>,
     /// Desktop bounds for window positioning
@@ -104,6 +108,8 @@ impl WindowManager {
         cx.new(|cx| Self {
             windows: HashMap::new(),
             window_bounds: HashMap::new(),
+            window_z_index: HashMap::new(),
+            next_z_index: 1,
             focused_window: None,
             desktop_bounds,
             dragging_window: None,
@@ -148,6 +154,8 @@ impl WindowManager {
 
         self.windows.insert(id, managed_window);
         self.window_bounds.insert(id, bounds);
+        self.window_z_index.insert(id, self.next_z_index);
+        self.next_z_index += 1;
         self.focus_window(id, window, cx);
 
         cx.emit(WindowEvent::Focused(id));
@@ -171,6 +179,10 @@ impl WindowManager {
             });
         }
 
+        // Bring focused window to front by giving it the highest z-index
+        self.window_z_index.insert(id, self.next_z_index);
+        self.next_z_index += 1;
+
         cx.emit(WindowEvent::Focused(id));
         cx.notify();
     }
@@ -179,6 +191,7 @@ impl WindowManager {
     pub fn close_window(&mut self, id: WindowId, _window: &mut Window, cx: &mut Context<Self>) {
         if let Some(_) = self.windows.remove(&id) {
             self.window_bounds.remove(&id);
+            self.window_z_index.remove(&id);
             if self.focused_window == Some(id) {
                 self.focused_window = None;
                 // Focus another window if available
@@ -532,12 +545,12 @@ impl Render for WindowManager {
             }
         }
 
-        // Sort windows by focus state (focused windows on top)
-        // Create a vector of (window, is_focused) to avoid reading during render
+        // Sort windows by z-index (higher z-index = on top)
         let mut window_data: Vec<_> = self.windows.iter().map(|(&id, window)| {
-            (window.clone(), id == self.focused_window.unwrap_or_default())
+            let z_index = self.window_z_index.get(&id).copied().unwrap_or(0);
+            (window.clone(), z_index)
         }).collect();
-        window_data.sort_by_key(|(_, is_focused)| !is_focused);
+        window_data.sort_by_key(|(_, z_index)| *z_index);
         let windows: Vec<_> = window_data.into_iter().map(|(window, _)| window).collect();
 
         div()
