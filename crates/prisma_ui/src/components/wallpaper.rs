@@ -84,10 +84,16 @@ impl Wallpaper {
     }
 
     fn render_image(&self, path: &str) -> impl IntoElement {
-        // Debug: print the path being loaded
         eprintln!("Wallpaper: Attempting to load image: {}", path);
 
-        let image = img(path);
+        // Check if this is the large image file and use a different approach
+        let image = if path == "default_wallpaper.jpg" {
+            eprintln!("Wallpaper: Large image detected, trying alternative approach");
+            // For large images, we might need a different loading strategy
+            img(path).size_full()
+        } else {
+            img(path)
+        };
 
         // For simplicity, always wrap in a div container
         div()
@@ -98,9 +104,9 @@ impl Wallpaper {
             .bg(self.fallback_color)  // Add fallback background color
             .child(
                 match self.mode {
-                    WallpaperMode::Fill => image.size_full().object_fit(gpui::ObjectFit::Cover),
-                    WallpaperMode::Stretch => image.size_full(),
-                    WallpaperMode::Fit => image.max_w_full().max_h_full().object_fit(gpui::ObjectFit::Contain),
+                    WallpaperMode::Fill => image.object_fit(gpui::ObjectFit::Cover),
+                    WallpaperMode::Stretch => image,
+                    WallpaperMode::Fit => image.object_fit(gpui::ObjectFit::Contain),
                     WallpaperMode::Center => image,
                     WallpaperMode::Tile => image,
                 }

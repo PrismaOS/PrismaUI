@@ -6,7 +6,9 @@
       "Read(//c/Users/redst/.cargo/git/checkouts/zed-a70e2ad075855582/53b2f37/crates/gpui/**)",
       "WebFetch(domain:github.com)",
       "Bash(mkdir:*)",
-      "Bash(cargo:*)"
+      "Bash(cargo:*)",
+      "Bash(timeout 8s cargo run -p prisma_ui)",
+      "Bash(timeout 5s cargo run -p prisma_ui)"
     ],
     "deny": [],
     "ask": []
