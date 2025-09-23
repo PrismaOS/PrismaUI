@@ -81,6 +81,8 @@ pub struct WindowManager {
     pending_focus_window: Option<WindowId>,
     /// Pending resize update to avoid reentrancy
     pending_resize_data: Option<(WindowId, Point<Pixels>, ResizeHandle)>,
+    /// Drag offset from mouse position to window origin
+    drag_offset: Point<Pixels>,
 }
 
 #[derive(Clone, Debug)]
@@ -109,6 +111,7 @@ impl WindowManager {
             pending_drag_position: None,
             pending_focus_window: None,
             pending_resize_data: None,
+            drag_offset: Point::default(),
         })
     }
 
@@ -244,10 +247,18 @@ impl WindowManager {
     }
 
     /// Start dragging a window
-    fn start_drag(&mut self, window_id: WindowId, _window: &mut Window, cx: &mut Context<Self>) {
-        self.dragging_window = Some(window_id);
-        self.pending_focus_window = Some(window_id);
-        cx.notify();
+    fn start_drag(&mut self, window_id: WindowId, mouse_pos: Point<Pixels>, cx: &mut Context<Self>) {
+        if let Some(managed_window) = self.windows.get(&window_id) {
+            let window_bounds = managed_window.read(cx).bounds;
+            // Calculate offset from mouse position to window origin
+            self.drag_offset = Point {
+                x: mouse_pos.x - window_bounds.origin.x,
+                y: mouse_pos.y - window_bounds.origin.y,
+            };
+            self.dragging_window = Some(window_id);
+            self.pending_focus_window = Some(window_id);
+            cx.notify();
+        }
     }
 
     /// Handle window drag movement
@@ -424,14 +435,22 @@ impl Render for WindowManager {
         }
 
         // Process pending drag position update to avoid reentrancy
-        if let (Some(drag_position), Some(window_id)) = (self.pending_drag_position.take(), self.dragging_window) {
+        if let (Some(mouse_position), Some(window_id)) = (self.pending_drag_position.take(), self.dragging_window) {
             if let Some(managed_window) = self.windows.get(&window_id) {
                 managed_window.update(cx, |w, cx| {
                     let mut new_bounds = w.bounds;
-                    new_bounds.origin = drag_position;
+                    // Apply the drag offset to maintain relative position
+                    new_bounds.origin = Point {
+                        x: mouse_position.x - self.drag_offset.x,
+                        y: mouse_position.y - self.drag_offset.y,
+                    };
                     w.set_bounds(new_bounds, cx);
                 });
-                cx.emit(WindowEvent::Moved { id: window_id, position: drag_position });
+                let new_origin = Point {
+                    x: mouse_position.x - self.drag_offset.x,
+                    y: mouse_position.y - self.drag_offset.y,
+                };
+                cx.emit(WindowEvent::Moved { id: window_id, position: new_origin });
             }
         }
 
@@ -495,7 +514,12 @@ impl Render for WindowManager {
             }
         }
 
-        let windows: Vec<_> = self.windows.values().cloned().collect();
+        // Sort windows by focus state (focused windows on top)
+        let mut windows: Vec<_> = self.windows.values().cloned().collect();
+        windows.sort_by_key(|window| {
+            let is_focused = window.read(cx).focused;
+            !is_focused // Sort focused windows last (on top)
+        });
 
         div()
             .absolute()
@@ -733,9 +757,9 @@ impl ManagedWindow {
             .px_3()
             .items_center()
             .justify_between()
-            .on_mouse_down(MouseButton::Left, cx.listener(move |_, _, window, cx| {
+            .on_mouse_down(MouseButton::Left, cx.listener(move |_, event: &MouseDownEvent, _, cx| {
                 if let Some(wm) = wm1.upgrade() {
-                    wm.update(cx, |wm, cx| wm.start_drag(window_id, window, cx));
+                    wm.update(cx, |wm, cx| wm.start_drag(window_id, event.position, cx));
                 }
             }))
             .child(
