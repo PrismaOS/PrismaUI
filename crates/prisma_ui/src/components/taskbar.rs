@@ -267,7 +267,7 @@ impl Taskbar {
                     .ghost()
                     .compact()
                     .relative()
-                    .child(Icon::new(icon.icon).size_4())
+                    .child(Icon::new(icon.icon.clone()).size_4())
                     .when_some(icon.badge_count, |this, count| {
                         this.child(
                             div()
@@ -342,7 +342,6 @@ impl Render for Taskbar {
                     .w_full()
                     .h(taskbar_height)
                     .bg(cx.theme().sidebar.opacity(0.95))
-                    .backdrop_blur_sm()
                     .border_t_1()
                     .border_color(cx.theme().border)
                     .child(
