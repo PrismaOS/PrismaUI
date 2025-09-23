@@ -394,7 +394,7 @@ impl Render for WindowManager {
             .absolute()
             .size_full()
             .children(windows)
-            .on_mouse_down(MouseDownEvent::Left, cx.listener(|this, event: &MouseDownEvent, window, cx| {
+            .on_mouse_down(MouseButton::Left, cx.listener(|this, event: &MouseDownEvent, window, cx| {
                 // Check if clicking on a window
                 for (&id, managed_window) in &this.windows {
                     let bounds = managed_window.read(cx).bounds;
@@ -407,7 +407,7 @@ impl Render for WindowManager {
             .on_mouse_move(cx.listener(|this, event: &MouseMoveEvent, window, cx| {
                 this.handle_drag_move(event.position, window, cx);
             }))
-            .on_mouse_up(MouseUpEvent::Left, cx.listener(|this, _: &MouseUpEvent, window, cx| {
+            .on_mouse_up(MouseButton::Left, cx.listener(|this, _, window, cx| {
                 this.stop_drag(window, cx);
             }))
     }
@@ -480,7 +480,7 @@ impl ManagedWindow {
             .px_3()
             .items_center()
             .justify_between()
-            .on_mouse_down(MouseDownEvent::Left, cx.listener(move |_, _, window, cx| {
+            .on_mouse_down(MouseButton::Left, cx.listener(move |_, _, window, cx| {
                 if let Some(wm) = window_manager.upgrade() {
                     wm.update(cx, |wm, cx| wm.start_drag(window_id, window, cx));
                 }
