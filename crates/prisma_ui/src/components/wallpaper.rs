@@ -83,46 +83,24 @@ impl Wallpaper {
         cx.notify();
     }
 
-    fn render_image(&self, path: &str) -> Box<dyn IntoElement> {
+    fn render_image(&self, path: &str) -> impl IntoElement {
         let image = img(path);
 
-        match self.mode {
-            WallpaperMode::Stretch => {
-                Box::new(image.size_full())
-            }
-            WallpaperMode::Fit => {
-                // Scale to fit while maintaining aspect ratio
-                Box::new(div()
-                    .size_full()
-                    .flex()
-                    .items_center()
-                    .justify_center()
-                    .child(image.max_w_full().max_h_full()))
-            }
-            WallpaperMode::Fill => {
-                // Scale to fill while maintaining aspect ratio (may crop)
-                Box::new(image.size_full())
-            }
-            WallpaperMode::Center => {
-                // Center at original size
-                Box::new(div()
-                    .size_full()
-                    .flex()
-                    .items_center()
-                    .justify_center()
-                    .child(image))
-            }
-            WallpaperMode::Tile => {
-                // For tiling, we'd need to use CSS background-repeat equivalent
-                // GPUI doesn't directly support this, so we fall back to center for now
-                Box::new(div()
-                    .size_full()
-                    .flex()
-                    .items_center()
-                    .justify_center()
-                    .child(image))
-            }
-        }
+        // For simplicity, always wrap in a div container
+        div()
+            .size_full()
+            .flex()
+            .items_center()
+            .justify_center()
+            .child(
+                match self.mode {
+                    WallpaperMode::Stretch => image.size_full(),
+                    WallpaperMode::Fit => image.max_w_full().max_h_full(),
+                    WallpaperMode::Fill => image.size_full(),
+                    WallpaperMode::Center => image,
+                    WallpaperMode::Tile => image,
+                }
+            )
     }
 
     fn render_fallback(&self) -> impl IntoElement {
