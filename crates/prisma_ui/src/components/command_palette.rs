@@ -327,13 +327,11 @@ impl CommandPalette {
     fn render_command_item(&self, command_id: &str, is_selected: bool, cx: &mut Context<Self>) -> impl IntoElement {
         let command = &self.commands[command_id];
 
-        div()
+        Button::new(("command", command_id.clone()))
             .w_full()
-            .p_3()
-            .rounded(cx.theme().radius)
-            .when(is_selected, |this| this.bg(cx.theme().accent))
-            .hover(|this| this.bg(cx.theme().muted))
-            .cursor_pointer()
+            .ghost()
+            .justify_start()
+            .when(is_selected, |btn| btn.selected(true))
             .on_click({
                 let command_id = command_id.to_string();
                 cx.listener(move |this, _, _, cx| {
