@@ -75,6 +75,12 @@ pub struct WindowManager {
     snap_zone: Option<SnapZone>,
     /// Focus handle for the manager
     focus_handle: FocusHandle,
+    /// Pending drag position to avoid reentrancy
+    pending_drag_position: Option<Point<Pixels>>,
+    /// Pending window focus to avoid reentrancy
+    pending_focus_window: Option<WindowId>,
+    /// Pending resize update to avoid reentrancy
+    pending_resize_data: Option<(WindowId, Point<Pixels>, ResizeHandle)>,
 }
 
 #[derive(Clone, Debug)]
@@ -100,6 +106,9 @@ impl WindowManager {
             resize_handle: None,
             snap_zone: None,
             focus_handle: cx.focus_handle(),
+            pending_drag_position: None,
+            pending_focus_window: None,
+            pending_resize_data: None,
         })
     }
 
@@ -235,26 +244,20 @@ impl WindowManager {
     }
 
     /// Start dragging a window
-    fn start_drag(&mut self, window_id: WindowId, window: &mut Window, cx: &mut Context<Self>) {
+    fn start_drag(&mut self, window_id: WindowId, _window: &mut Window, cx: &mut Context<Self>) {
         self.dragging_window = Some(window_id);
-        self.focus_window(window_id, window, cx);
+        self.pending_focus_window = Some(window_id);
+        cx.notify();
     }
 
     /// Handle window drag movement
     fn handle_drag_move(&mut self, position: Point<Pixels>, _: &mut Window, cx: &mut Context<Self>) {
-        if let Some(window_id) = self.dragging_window {
-            if let Some(window) = self.windows.get(&window_id) {
-                window.update(cx, |w, cx| {
-                    let mut new_bounds = w.bounds;
-                    new_bounds.origin = position;
-                    w.set_bounds(new_bounds, cx);
-                });
-
-                // Calculate snap zone
-                self.snap_zone = self.calculate_snap_zone(position);
-                cx.emit(WindowEvent::Moved { id: window_id, position });
-                cx.notify();
-            }
+        if let Some(_window_id) = self.dragging_window {
+            // Store the position for processing in the next render
+            self.pending_drag_position = Some(position);
+            // Calculate snap zone
+            self.snap_zone = self.calculate_snap_zone(position);
+            cx.notify();
         }
     }
 
@@ -266,6 +269,30 @@ impl WindowManager {
             }
             self.dragging_window = None;
             self.snap_zone = None;
+            self.pending_drag_position = None;
+            cx.notify();
+        }
+
+        // Also stop any resize operation
+        if self.resizing_window.is_some() {
+            self.resizing_window = None;
+            self.resize_handle = None;
+            self.pending_resize_data = None;
+            cx.notify();
+        }
+    }
+
+    /// Start resizing a window
+    fn start_resize(&mut self, window_id: WindowId, handle: ResizeHandle, cx: &mut Context<Self>) {
+        self.resizing_window = Some(window_id);
+        self.resize_handle = Some(handle);
+        cx.notify();
+    }
+
+    /// Handle window resize movement
+    fn handle_resize_move(&mut self, position: Point<Pixels>, cx: &mut Context<Self>) {
+        if let (Some(window_id), Some(handle)) = (self.resizing_window, &self.resize_handle) {
+            self.pending_resize_data = Some((window_id, position, handle.clone()));
             cx.notify();
         }
     }
@@ -391,24 +418,106 @@ impl Focusable for WindowManager {
 
 impl Render for WindowManager {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        // Process pending window focus to avoid reentrancy
+        if let Some(window_id) = self.pending_focus_window.take() {
+            self.focus_window(window_id, window, cx);
+        }
+
+        // Process pending drag position update to avoid reentrancy
+        if let (Some(drag_position), Some(window_id)) = (self.pending_drag_position.take(), self.dragging_window) {
+            if let Some(managed_window) = self.windows.get(&window_id) {
+                managed_window.update(cx, |w, cx| {
+                    let mut new_bounds = w.bounds;
+                    new_bounds.origin = drag_position;
+                    w.set_bounds(new_bounds, cx);
+                });
+                cx.emit(WindowEvent::Moved { id: window_id, position: drag_position });
+            }
+        }
+
+        // Process pending resize update to avoid reentrancy
+        if let Some((window_id, mouse_pos, handle)) = self.pending_resize_data.take() {
+            if let Some(managed_window) = self.windows.get(&window_id) {
+                managed_window.update(cx, |w, cx| {
+                    let old_bounds = w.bounds;
+                    let mut new_bounds = old_bounds;
+
+                    match handle {
+                        ResizeHandle::Right => {
+                            new_bounds.size.width = (mouse_pos.x - old_bounds.origin.x).max(px(200.0));
+                        },
+                        ResizeHandle::Bottom => {
+                            new_bounds.size.height = (mouse_pos.y - old_bounds.origin.y).max(px(150.0));
+                        },
+                        ResizeHandle::BottomRight => {
+                            new_bounds.size.width = (mouse_pos.x - old_bounds.origin.x).max(px(200.0));
+                            new_bounds.size.height = (mouse_pos.y - old_bounds.origin.y).max(px(150.0));
+                        },
+                        ResizeHandle::Left => {
+                            let new_width = (old_bounds.origin.x + old_bounds.size.width - mouse_pos.x).max(px(200.0));
+                            new_bounds.origin.x = old_bounds.origin.x + old_bounds.size.width - new_width;
+                            new_bounds.size.width = new_width;
+                        },
+                        ResizeHandle::Top => {
+                            let new_height = (old_bounds.origin.y + old_bounds.size.height - mouse_pos.y).max(px(150.0));
+                            new_bounds.origin.y = old_bounds.origin.y + old_bounds.size.height - new_height;
+                            new_bounds.size.height = new_height;
+                        },
+                        ResizeHandle::TopLeft => {
+                            let new_width = (old_bounds.origin.x + old_bounds.size.width - mouse_pos.x).max(px(200.0));
+                            let new_height = (old_bounds.origin.y + old_bounds.size.height - mouse_pos.y).max(px(150.0));
+                            new_bounds.origin.x = old_bounds.origin.x + old_bounds.size.width - new_width;
+                            new_bounds.origin.y = old_bounds.origin.y + old_bounds.size.height - new_height;
+                            new_bounds.size.width = new_width;
+                            new_bounds.size.height = new_height;
+                        },
+                        ResizeHandle::TopRight => {
+                            let new_height = (old_bounds.origin.y + old_bounds.size.height - mouse_pos.y).max(px(150.0));
+                            new_bounds.origin.y = old_bounds.origin.y + old_bounds.size.height - new_height;
+                            new_bounds.size.width = (mouse_pos.x - old_bounds.origin.x).max(px(200.0));
+                            new_bounds.size.height = new_height;
+                        },
+                        ResizeHandle::BottomLeft => {
+                            let new_width = (old_bounds.origin.x + old_bounds.size.width - mouse_pos.x).max(px(200.0));
+                            new_bounds.origin.x = old_bounds.origin.x + old_bounds.size.width - new_width;
+                            new_bounds.size.width = new_width;
+                            new_bounds.size.height = (mouse_pos.y - old_bounds.origin.y).max(px(150.0));
+                        },
+                    }
+
+                    w.set_bounds(new_bounds, cx);
+                });
+                // Get the updated bounds for the event
+                if let Some(managed_window) = self.windows.get(&window_id) {
+                    let bounds = managed_window.read(cx).bounds;
+                    cx.emit(WindowEvent::Resized { id: window_id, size: bounds.size });
+                }
+            }
+        }
+
         let windows: Vec<_> = self.windows.values().cloned().collect();
 
         div()
             .absolute()
             .size_full()
             .children(windows)
-            .on_mouse_down(MouseButton::Left, cx.listener(|this, event: &MouseDownEvent, window, cx| {
-                // Check if clicking on a window
+            .on_mouse_down(MouseButton::Left, cx.listener(|this, event: &MouseDownEvent, _window, cx| {
+                // Check if clicking on a window - defer focus to avoid reentrancy
                 for (&id, managed_window) in &this.windows {
                     let bounds = managed_window.read(cx).bounds;
                     if bounds.contains(&event.position) {
-                        this.focus_window(id, window, cx);
+                        this.pending_focus_window = Some(id);
+                        cx.notify();
                         break;
                     }
                 }
             }))
             .on_mouse_move(cx.listener(|this, event: &MouseMoveEvent, window, cx| {
-                this.handle_drag_move(event.position, window, cx);
+                if this.dragging_window.is_some() {
+                    this.handle_drag_move(event.position, window, cx);
+                } else if this.resizing_window.is_some() {
+                    this.handle_resize_move(event.position, cx);
+                }
             }))
             .on_mouse_up(MouseButton::Left, cx.listener(|this, _, window, cx| {
                 this.stop_drag(window, cx);
@@ -471,6 +580,140 @@ impl ManagedWindow {
     pub fn set_maximized(&mut self, maximized: bool, cx: &mut Context<Self>) {
         self.maximized = maximized;
         cx.notify();
+    }
+
+    fn render_resize_handles(&self, window_manager: WeakEntity<WindowManager>, cx: &mut Context<Self>) -> impl IntoElement {
+        let window_id = self.id;
+        let handle_size = px(8.0);
+        let corner_size = px(16.0);
+
+        div()
+            .absolute()
+            .inset_0()
+            .children([
+                // Corner handles
+                div() // Top-left
+                    .absolute()
+                    .left_0()
+                    .top_0()
+                    .w(corner_size)
+                    .h(corner_size)
+                    .cursor_nwse_resize()
+                    .on_mouse_down(MouseButton::Left, {
+                        let wm = window_manager.clone();
+                        cx.listener(move |_, _, _, cx| {
+                            if let Some(wm) = wm.upgrade() {
+                                wm.update(cx, |wm, cx| wm.start_resize(window_id, ResizeHandle::TopLeft, cx));
+                            }
+                        })
+                    }),
+                div() // Top-right
+                    .absolute()
+                    .right_0()
+                    .top_0()
+                    .w(corner_size)
+                    .h(corner_size)
+                    .cursor_nesw_resize()
+                    .on_mouse_down(MouseButton::Left, {
+                        let wm = window_manager.clone();
+                        cx.listener(move |_, _, _, cx| {
+                            if let Some(wm) = wm.upgrade() {
+                                wm.update(cx, |wm, cx| wm.start_resize(window_id, ResizeHandle::TopRight, cx));
+                            }
+                        })
+                    }),
+                div() // Bottom-left
+                    .absolute()
+                    .left_0()
+                    .bottom_0()
+                    .w(corner_size)
+                    .h(corner_size)
+                    .cursor_nesw_resize()
+                    .on_mouse_down(MouseButton::Left, {
+                        let wm = window_manager.clone();
+                        cx.listener(move |_, _, _, cx| {
+                            if let Some(wm) = wm.upgrade() {
+                                wm.update(cx, |wm, cx| wm.start_resize(window_id, ResizeHandle::BottomLeft, cx));
+                            }
+                        })
+                    }),
+                div() // Bottom-right
+                    .absolute()
+                    .right_0()
+                    .bottom_0()
+                    .w(corner_size)
+                    .h(corner_size)
+                    .cursor_nwse_resize()
+                    .on_mouse_down(MouseButton::Left, {
+                        let wm = window_manager.clone();
+                        cx.listener(move |_, _, _, cx| {
+                            if let Some(wm) = wm.upgrade() {
+                                wm.update(cx, |wm, cx| wm.start_resize(window_id, ResizeHandle::BottomRight, cx));
+                            }
+                        })
+                    }),
+                // Edge handles
+                div() // Top edge
+                    .absolute()
+                    .left(corner_size)
+                    .right(corner_size)
+                    .top_0()
+                    .h(handle_size)
+                    .cursor_ns_resize()
+                    .on_mouse_down(MouseButton::Left, {
+                        let wm = window_manager.clone();
+                        cx.listener(move |_, _, _, cx| {
+                            if let Some(wm) = wm.upgrade() {
+                                wm.update(cx, |wm, cx| wm.start_resize(window_id, ResizeHandle::Top, cx));
+                            }
+                        })
+                    }),
+                div() // Bottom edge
+                    .absolute()
+                    .left(corner_size)
+                    .right(corner_size)
+                    .bottom_0()
+                    .h(handle_size)
+                    .cursor_ns_resize()
+                    .on_mouse_down(MouseButton::Left, {
+                        let wm = window_manager.clone();
+                        cx.listener(move |_, _, _, cx| {
+                            if let Some(wm) = wm.upgrade() {
+                                wm.update(cx, |wm, cx| wm.start_resize(window_id, ResizeHandle::Bottom, cx));
+                            }
+                        })
+                    }),
+                div() // Left edge
+                    .absolute()
+                    .left_0()
+                    .top(corner_size)
+                    .bottom(corner_size)
+                    .w(handle_size)
+                    .cursor_ew_resize()
+                    .on_mouse_down(MouseButton::Left, {
+                        let wm = window_manager.clone();
+                        cx.listener(move |_, _, _, cx| {
+                            if let Some(wm) = wm.upgrade() {
+                                wm.update(cx, |wm, cx| wm.start_resize(window_id, ResizeHandle::Left, cx));
+                            }
+                        })
+                    }),
+                div() // Right edge
+                    .absolute()
+                    .right_0()
+                    .top(corner_size)
+                    .bottom(corner_size)
+                    .w(handle_size)
+                    .cursor_ew_resize()
+                    .on_mouse_down(MouseButton::Left, {
+                        let wm = window_manager.clone();
+                        cx.listener(move |_, _, _, cx| {
+                            if let Some(wm) = wm.upgrade() {
+                                wm.update(cx, |wm, cx| wm.start_resize(window_id, ResizeHandle::Right, cx));
+                            }
+                        })
+                    }),
+            ])
     }
 
     fn render_title_bar(&self, window_manager: WeakEntity<WindowManager>, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
@@ -573,7 +816,7 @@ impl Render for ManagedWindow {
             .child(
                 v_flex()
                     .size_full()
-                    .child(self.render_title_bar(window_manager, window, cx))
+                    .child(self.render_title_bar(window_manager.clone(), window, cx))
                     .child(
                         // Window content
                         div()
@@ -582,5 +825,6 @@ impl Render for ManagedWindow {
                             .child(self.content.take().unwrap_or_else(|| div().into_any_element()))
                     )
             )
+            .child(self.render_resize_handles(window_manager, cx))
     }
 }
