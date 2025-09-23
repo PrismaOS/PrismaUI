@@ -103,7 +103,7 @@ impl Desktop {
         .detach();
 
         // Set up periodic time updates for taskbar
-        cx.spawn(|(desktop, mut cx)| async move {
+        cx.spawn(async move |desktop, mut cx| {
             loop {
                 tokio::time::sleep(std::time::Duration::from_secs(60)).await;
                 _ = desktop.update(&mut cx, |desktop, cx| {

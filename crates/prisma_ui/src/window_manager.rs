@@ -2,7 +2,7 @@
 use gpui::{
     div, px, size, AnyElement, App, AppContext, Bounds, Context,
     Entity, EventEmitter, FocusHandle, Focusable, InteractiveElement,
-    IntoElement, MouseDownEvent, MouseMoveEvent, MouseUpEvent, ParentElement, Pixels,
+    IntoElement, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, ParentElement, Pixels,
     Point, Render, Size, Styled, WeakEntity, Window
 };
 use gpui_component::{

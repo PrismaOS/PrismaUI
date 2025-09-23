@@ -450,7 +450,7 @@ impl Render for CommandPalette {
                                 // Command list
                                 div()
                                     .flex_1()
-                                    .overflow_y_scroll()
+                                    .overflow_y_hidden()
                                     .p_2()
                                     .child(
                                         v_flex()
