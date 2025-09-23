@@ -87,6 +87,12 @@ pub struct WindowManager {
     pending_focus_window: Option<WindowId>,
     /// Pending resize update to avoid reentrancy
     pending_resize_data: Option<(WindowId, Point<Pixels>, ResizeHandle)>,
+    /// Pending window minimize to avoid reentrancy
+    pending_minimize_window: Option<WindowId>,
+    /// Pending window maximize toggle to avoid reentrancy
+    pending_maximize_window: Option<WindowId>,
+    /// Pending window close to avoid reentrancy
+    pending_close_window: Option<WindowId>,
     /// Drag offset from mouse position to window origin
     drag_offset: Point<Pixels>,
 }
@@ -120,6 +126,9 @@ impl WindowManager {
             pending_drag_position: None,
             pending_focus_window: None,
             pending_resize_data: None,
+            pending_minimize_window: None,
+            pending_maximize_window: None,
+            pending_close_window: None,
             drag_offset: Point::default(),
         })
     }
@@ -505,6 +514,19 @@ impl Render for WindowManager {
             }
         }
 
+        // Process pending window management actions to avoid reentrancy
+        if let Some(window_id) = self.pending_minimize_window.take() {
+            self.minimize_window(window_id, window, cx);
+        }
+
+        if let Some(window_id) = self.pending_maximize_window.take() {
+            self.toggle_maximize_window(window_id, window, cx);
+        }
+
+        if let Some(window_id) = self.pending_close_window.take() {
+            self.close_window(window_id, window, cx);
+        }
+
         // Process pending resize update to avoid reentrancy
         if let Some((window_id, mouse_pos, handle)) = self.pending_resize_data.take() {
             if let Some(managed_window) = self.windows.get(&window_id) {
@@ -881,9 +903,12 @@ impl ManagedWindow {
                             .outline()
                             .size(px(28.0))
                             .icon(IconName::Menu)
-                            .on_click(cx.listener(move |_, _, window, cx| {
+                            .on_click(cx.listener(move |_, _, _, cx| {
                                 if let Some(wm) = wm2.upgrade() {
-                                    wm.update(cx, |wm, cx| wm.minimize_window(window_id, window, cx));
+                                    wm.update(cx, |wm, cx| {
+                                        wm.pending_minimize_window = Some(window_id);
+                                        cx.notify();
+                                    });
                                 }
                             }))
                     )
@@ -892,9 +917,12 @@ impl ManagedWindow {
                             .outline()
                             .size(px(28.0))
                             .icon(if self.maximized { IconName::Folder } else { IconName::Settings })
-                            .on_click(cx.listener(move |_, _, window, cx| {
+                            .on_click(cx.listener(move |_, _, _, cx| {
                                 if let Some(wm) = wm3.upgrade() {
-                                    wm.update(cx, |wm, cx| wm.toggle_maximize_window(window_id, window, cx));
+                                    wm.update(cx, |wm, cx| {
+                                        wm.pending_maximize_window = Some(window_id);
+                                        cx.notify();
+                                    });
                                 }
                             }))
                     )
@@ -903,9 +931,12 @@ impl ManagedWindow {
                             .outline()
                             .size(px(28.0))
                             .icon(IconName::User)
-                            .on_click(cx.listener(move |_, _, window, cx| {
+                            .on_click(cx.listener(move |_, _, _, cx| {
                                 if let Some(wm) = wm4.upgrade() {
-                                    wm.update(cx, |wm, cx| wm.close_window(window_id, window, cx));
+                                    wm.update(cx, |wm, cx| {
+                                        wm.pending_close_window = Some(window_id);
+                                        cx.notify();
+                                    });
                                 }
                             }))
                     )
