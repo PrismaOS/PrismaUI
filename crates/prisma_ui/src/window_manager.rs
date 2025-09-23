@@ -476,6 +476,9 @@ impl ManagedWindow {
     fn render_title_bar(&self, window_manager: WeakEntity<WindowManager>, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let window_id = self.id;
         let focused = self.focused;
+        let wm1 = window_manager.clone();
+        let wm2 = window_manager.clone();
+        let wm3 = window_manager.clone();
 
         h_flex()
             .w_full()
@@ -487,7 +490,7 @@ impl ManagedWindow {
             .items_center()
             .justify_between()
             .on_mouse_down(MouseButton::Left, cx.listener(move |_, _, window, cx| {
-                if let Some(wm) = window_manager.upgrade() {
+                if let Some(wm) = wm1.upgrade() {
                     wm.update(cx, |wm, cx| wm.start_drag(window_id, window, cx));
                 }
             }))
@@ -575,7 +578,7 @@ impl Render for ManagedWindow {
                         div()
                             .flex_1()
                             .overflow_hidden()
-                            .child(self.content.take().unwrap_or_else(|| div()))
+                            .child(self.content.take().unwrap_or_else(|| div().into_any_element()))
                     )
             )
     }
