@@ -3,7 +3,7 @@ use gpui::{
     div, img, rgb, Context, Entity, IntoElement, ParentElement, Render,
     Styled, Window, Bounds, Pixels, AppContext
 };
-use gpui_component::StyledExt;
+// use gpui_component::StyledExt;
 
 /// Wallpaper display modes
 #[derive(Clone, Debug, PartialEq)]

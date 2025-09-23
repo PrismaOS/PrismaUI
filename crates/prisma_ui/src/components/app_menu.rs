@@ -5,8 +5,8 @@ use gpui::{
 };
 use gpui::prelude::FluentBuilder;
 use gpui_component::{
-    button::{Button, ButtonVariants as _}, h_flex, input::{InputState, TextInput},
-    modal::Modal, v_flex, ActiveTheme, Icon, IconName, StyledExt
+    button::{Button, ButtonVariants as _}, h_flex, input::{InputEvent, InputState, TextInput},
+    modal::Modal, v_flex, ActiveTheme, Icon, IconName, StyledExt, Selectable
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -100,6 +100,17 @@ impl AppMenu {
             InputState::new(window, cx)
                 .placeholder("Search apps...")
         });
+
+        // Subscribe to search input changes
+        cx.subscribe(&search_input, |this, _, event, cx| {
+            match event {
+                InputEvent::Change => {
+                    let query = this.search_input.read(cx).value();
+                    this.search(&query, cx);
+                }
+                _ => {}
+            }
+        }).detach();
 
         // Create sample applications
         let mut apps = HashMap::new();
@@ -319,7 +330,7 @@ impl AppMenu {
             .border_color(cx.theme().border)
             .p_2()
             .gap_1()
-            .children(categories.iter().map(|&category| {
+            .children(categories.iter().map(|category| {
                 let is_active = category == self.active_category;
                 let count = self.categories.get(&category).map_or(0, |apps| apps.len());
 
@@ -368,19 +379,16 @@ impl AppMenu {
                 // Search bar
                 TextInput::new(&self.search_input)
                     .w_full()
-                    .on_input(cx.listener(|this, query, _, cx| {
-                        this.search(&query, cx);
-                    }))
             )
             .child(
                 // App grid
                 div()
                     .flex_1()
-                    .overflow_y_scroll()
+                    .overflow_y_auto()
                     .child(
                         div()
                             .grid()
-                            .grid_cols_4()
+                            .grid_cols(4)
                             .gap_3()
                             .children(self.filtered_apps.iter().map(|app| {
                                 div()

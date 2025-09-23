@@ -5,7 +5,7 @@ use gpui::{
     Transformation, Window,
 };
 
-#[derive(IntoElement, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(IntoElement, Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub enum IconName {
     ALargeSmall,
     ArrowDown,
