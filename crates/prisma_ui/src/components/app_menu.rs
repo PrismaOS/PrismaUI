@@ -1,8 +1,10 @@
 /// App menu component - Windows Start Menu / macOS Dock hybrid
 use gpui::{
     div, px, Action, Context, Entity, EventEmitter, FocusHandle, Focusable,
-    IntoElement, ParentElement, Render, Styled, Window, AppContext
+    IntoElement, ParentElement, Render, Styled, Window, AppContext, ElementId, Animation, AnimationExt
 };
+use std::time::Duration;
+use gpui_component::animation::cubic_bezier;
 use gpui::prelude::FluentBuilder;
 use gpui_component::{
     button::{Button, ButtonVariants as _}, h_flex, input::{InputEvent, InputState, TextInput},
@@ -587,7 +589,7 @@ impl Focusable for AppMenu {
 impl Render for AppMenu {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         if !self.open {
-            return div(); // Hidden when closed
+            return div().into_any_element(); // Hidden when closed
         }
 
         // Modern start menu with user and power sections
@@ -615,5 +617,18 @@ impl Render for AppMenu {
                     )
                     .child(self.render_power_menu(cx))
             )
+            .with_animation(
+                ElementId::Name("start-menu-open".into()),
+                Animation::new(Duration::from_secs_f64(0.25))
+                    .with_easing(cubic_bezier(0.32, 0.72, 0., 1.)),
+                move |this, delta| {
+                    // Slide up from bottom and fade in
+                    let y_offset = px(30.) * (1. - delta);
+                    let opacity = 0.5 + (0.5 * delta);
+                    this.bottom(px(56.0) - y_offset)
+                        .opacity(opacity)
+                }
+            )
+            .into_any_element()
     }
 }
