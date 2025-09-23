@@ -120,11 +120,13 @@ impl WindowManager {
             Bounds::centered(None, size, cx)
         });
 
+        let weak_self = cx.weak_entity();
         let managed_window = cx.new(|cx| ManagedWindow::new(
             id,
             title,
             content,
             bounds,
+            weak_self,
             cx,
         ));
 
@@ -549,8 +551,7 @@ impl Render for ManagedWindow {
             return div(); // Hidden when minimized
         }
 
-        // TODO: Fix window manager reference
-        let window_manager = WeakEntity::new();
+        let window_manager = self.window_manager.clone();
 
         div()
             .absolute()
