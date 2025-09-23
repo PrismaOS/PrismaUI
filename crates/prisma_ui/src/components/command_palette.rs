@@ -430,7 +430,7 @@ impl Render for CommandPalette {
                                     .border_color(cx.theme().border)
                                     .child(
                                         TextInput::new(&self.search_input)
-                                            .full_width()
+                                            .w_full()
                                             .text_lg()
                                             .on_input(cx.listener(|this, query, _, cx| {
                                                 this.search(&query, cx);
