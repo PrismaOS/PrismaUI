@@ -232,6 +232,7 @@ impl WindowManager {
                 w.set_maximized(!is_maximized, cx);
                 w.set_bounds(new_bounds, cx);
             });
+            self.update_window_bounds(id, new_bounds);
 
             cx.emit(WindowEvent::MaximizeRequested(id));
             cx.notify();
