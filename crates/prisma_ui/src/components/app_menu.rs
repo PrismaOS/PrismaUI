@@ -1,8 +1,9 @@
 /// App menu component - Windows Start Menu / macOS Dock hybrid
 use gpui::{
     div, px, Action, Context, Entity, FocusHandle, Focusable,
-    InteractiveElement, IntoElement, ParentElement, Render, Styled, Window
+    InteractiveElement, IntoElement, ParentElement, Render, Styled, Window, AppContext
 };
+use gpui::prelude::FluentBuilder;
 use gpui_component::{
     button::{Button, ButtonVariants as _}, h_flex, input::{InputState, TextInput},
     modal::Modal, v_flex, ActiveTheme, Icon, IconName, StyledExt
