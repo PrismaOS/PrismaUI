@@ -441,7 +441,7 @@ impl ManagedWindow {
         Self {
             id,
             title,
-            content: Some(content.into_any_element()),
+            content: content.into_any_element(),
             bounds,
             restored_bounds: bounds,
             minimized: false,
@@ -574,10 +574,7 @@ impl Render for ManagedWindow {
                         div()
                             .flex_1()
                             .overflow_hidden()
-                            .child(
-                                // Content placeholder - TODO: Fix AnyElement rendering
-                                div().child("Window content")
-                            )
+                            .child(self.content)
                     )
             )
     }
