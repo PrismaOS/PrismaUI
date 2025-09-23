@@ -479,6 +479,7 @@ impl ManagedWindow {
         let wm1 = window_manager.clone();
         let wm2 = window_manager.clone();
         let wm3 = window_manager.clone();
+        let wm4 = window_manager.clone();
 
         h_flex()
             .w_full()
@@ -512,7 +513,7 @@ impl ManagedWindow {
                             .compact()
                             .icon(IconName::Minus)
                             .on_click(cx.listener(move |_, _, window, cx| {
-                                if let Some(wm) = window_manager.upgrade() {
+                                if let Some(wm) = wm2.upgrade() {
                                     wm.update(cx, |wm, cx| wm.minimize_window(window_id, window, cx));
                                 }
                             }))
@@ -523,7 +524,7 @@ impl ManagedWindow {
                             .compact()
                             .icon(if self.maximized { IconName::Minimize } else { IconName::Maximize })
                             .on_click(cx.listener(move |_, _, window, cx| {
-                                if let Some(wm) = window_manager.upgrade() {
+                                if let Some(wm) = wm3.upgrade() {
                                     wm.update(cx, |wm, cx| wm.toggle_maximize_window(window_id, window, cx));
                                 }
                             }))
@@ -534,7 +535,7 @@ impl ManagedWindow {
                             .compact()
                             .icon(IconName::Close)
                             .on_click(cx.listener(move |_, _, window, cx| {
-                                if let Some(wm) = window_manager.upgrade() {
+                                if let Some(wm) = wm4.upgrade() {
                                     wm.update(cx, |wm, cx| wm.close_window(window_id, window, cx));
                                 }
                             }))
