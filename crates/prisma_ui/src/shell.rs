@@ -95,9 +95,6 @@ impl SystemShell {
                             .p_2()
                             .rounded(cx.theme().radius)
                             .hover(|this| this.bg(cx.theme().accent.opacity(0.1)))
-                            .on_double_click(cx.listener(move |_, _, _, _| {
-                                tracing::info!("Double-clicked desktop icon: {}", name);
-                            }))
                             .child(
                                 v_flex()
                                     .items_center()
