@@ -3,8 +3,10 @@ use gpui::{
     div, px, size, AnyElement, App, AppContext, Bounds, Context,
     Entity, EventEmitter, FocusHandle, Focusable, InteractiveElement,
     IntoElement, MouseButton, MouseDownEvent, MouseMoveEvent, ParentElement, Pixels,
-    Point, Render, Size, Styled, WeakEntity, Window
+    Point, Render, Size, Styled, WeakEntity, Window, ElementId, Animation, AnimationExt
 };
+use std::time::Duration;
+use gpui_component::animation::cubic_bezier;
 use gpui::prelude::FluentBuilder;
 use gpui_component::{
     button::{Button, ButtonVariants as _}, h_flex, v_flex, ActiveTheme, IconName, StyledExt
@@ -222,7 +224,14 @@ impl WindowManager {
     pub fn minimize_window(&mut self, id: WindowId, _window: &mut Window, cx: &mut Context<Self>) {
         if let Some(window) = self.windows.get(&id) {
             window.update(cx, |w, cx| {
-                w.set_minimized(true, cx);
+                if !w.minimized {
+                    // Start minimize animation, then set minimized
+                    w.animating_minimize = true;
+                    w.set_minimized(true, cx);
+                } else {
+                    // Already minimized, just ensure state is correct
+                    w.animating_minimize = false;
+                }
             });
             cx.emit(WindowEvent::MinimizeRequested(id));
             cx.notify();
@@ -234,6 +243,9 @@ impl WindowManager {
         if let Some(managed_window) = self.windows.get(&id) {
             managed_window.update(cx, |w, cx| {
                 w.set_minimized(false, cx);
+                // Clear any animation states when restoring
+                w.animating_minimize = false;
+                w.animating_maximize = false;
             });
             self.focus_window(id, window, cx);
             cx.notify();
@@ -273,9 +285,13 @@ impl WindowManager {
             window.update(cx, |w, cx| {
                 if !is_maximized {
                     w.restored_bounds = w.bounds;
+                    // Start maximize animation
+                    w.animating_maximize = true;
                 }
                 w.set_maximized(!is_maximized, cx);
                 w.set_bounds(new_bounds, cx);
+
+                // Animation will stop automatically after duration
             });
             self.update_window_bounds(id, new_bounds);
 
@@ -670,6 +686,9 @@ pub struct ManagedWindow {
     pub focused: bool,
     focus_handle: FocusHandle,
     window_manager: WeakEntity<WindowManager>,
+    /// Animation state for minimize/maximize
+    pub animating_minimize: bool,
+    pub animating_maximize: bool,
 }
 
 impl ManagedWindow {
@@ -692,6 +711,8 @@ impl ManagedWindow {
             focused: false,
             focus_handle: cx.focus_handle(),
             window_manager,
+            animating_minimize: false,
+            animating_maximize: false,
         }
     }
 
@@ -975,13 +996,15 @@ impl Focusable for ManagedWindow {
 
 impl Render for ManagedWindow {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        if self.minimized {
-            return div(); // Hidden when minimized
+        // Don't render if minimized and not animating
+        if self.minimized && !self.animating_minimize {
+            return div().into_any_element();
         }
 
         let window_manager = self.window_manager.clone();
+        let window_id = self.id;
 
-        div()
+        let base_window = div()
             .absolute()
             .w(self.bounds.size.width)
             .h(self.bounds.size.height)
@@ -1005,6 +1028,40 @@ impl Render for ManagedWindow {
                             .child(self.content.take().unwrap_or_else(|| div().into_any_element()))
                     )
             )
-            .child(self.render_resize_handles(window_manager, cx))
+            .child(self.render_resize_handles(window_manager, cx));
+
+        // Add minimize animation only when starting to minimize (not when already minimized)
+        if self.animating_minimize && self.minimized {
+            let original_y = self.bounds.origin.y;
+            base_window
+                .with_animation(
+                    ElementId::NamedInteger("window-minimize".into(), window_id.as_u128() as u64),
+                    Animation::new(Duration::from_secs_f64(0.3))
+                        .with_easing(cubic_bezier(0.25, 0.46, 0.45, 0.94)),
+                    move |this, delta| {
+                        // Shrink window to taskbar
+                        let opacity = 1.0 - delta;
+                        let y_offset = px(100.) * delta; // Move toward taskbar
+                        this.top(original_y + y_offset)
+                            .opacity(opacity)
+                    }
+                )
+                .into_any_element()
+        } else if self.animating_maximize {
+            base_window
+                .with_animation(
+                    ElementId::NamedInteger("window-maximize".into(), window_id.as_u128() as u64),
+                    Animation::new(Duration::from_secs_f64(0.25))
+                        .with_easing(cubic_bezier(0.25, 0.46, 0.45, 0.94)),
+                    move |this, delta| {
+                        // Fade animation for maximize
+                        let opacity = 0.8 + (delta * 0.2);
+                        this.opacity(opacity)
+                    }
+                )
+                .into_any_element()
+        } else {
+            base_window.into_any_element()
+        }
     }
 }
