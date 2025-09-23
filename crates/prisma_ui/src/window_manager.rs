@@ -555,8 +555,10 @@ impl Render for ManagedWindow {
 
         div()
             .absolute()
-            .size(self.bounds.size)
-            .origin(self.bounds.origin)
+            .w(self.bounds.size.width)
+            .h(self.bounds.size.height)
+            .left(self.bounds.origin.x)
+            .top(self.bounds.origin.y)
             .bg(cx.theme().background)
             .border_1()
             .border_color(if self.focused { cx.theme().primary } else { cx.theme().border })
