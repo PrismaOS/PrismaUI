@@ -224,7 +224,7 @@ impl Taskbar {
             h_flex()
                 .gap_1()
                 .children(window_titles.into_iter().map(|(window_id, title)| {
-                    Button::new(format!("window-{}", window_id))
+                    Button::new(("window", window_id))
                         .ghost()
                         .compact()
                         .max_w(px(200.0))
@@ -262,7 +262,7 @@ impl Taskbar {
         h_flex()
             .gap_1()
             .children(self.tray_icons.values().map(|icon| {
-                Button::new(format!("tray-{}", icon.id))
+                Button::new(("tray", icon.id))
                     .ghost()
                     .compact()
                     .relative()
