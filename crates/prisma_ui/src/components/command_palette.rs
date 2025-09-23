@@ -7,7 +7,7 @@ use gpui::prelude::FluentBuilder;
 use gpui_component::{
     button::{Button, ButtonVariants as _},
     input::{InputState, TextInput},
-    v_flex, h_flex, ActiveTheme, Icon, IconName, StyledExt
+    v_flex, h_flex, ActiveTheme, Icon, IconName, StyledExt, Selectable
 };
 use serde::Deserialize;
 use std::collections::HashMap;
@@ -325,10 +325,10 @@ impl CommandPalette {
         score
     }
 
-    fn render_command_item(&self, command_id: &str, is_selected: bool, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render_command_item(&self, command_id: &str, index: usize, is_selected: bool, cx: &mut Context<Self>) -> impl IntoElement {
         let command = &self.commands[command_id];
 
-        Button::new(("command", command_id.clone()))
+        Button::new(("command", index))
             .w_full()
             .ghost()
             .justify_start()
@@ -455,7 +455,7 @@ impl Render for CommandPalette {
                                         v_flex()
                                             .gap_1()
                                             .children(self.filtered_commands.iter().enumerate().map(|(index, command_id)| {
-                                                self.render_command_item(command_id, index == self.selected_index, cx)
+                                                self.render_command_item(command_id, index, index == self.selected_index, cx)
                                             }))
                                     )
                                     .when(self.filtered_commands.is_empty(), |this| {
