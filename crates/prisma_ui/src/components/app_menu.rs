@@ -393,9 +393,11 @@ impl AppMenu {
     }
 
     fn render_app_grid(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        v_flex()
+        div()
             .flex_1()
             .h_full()
+            .flex()
+            .flex_col()
             .p_4()
             .gap_4()
             .child(
@@ -405,29 +407,33 @@ impl AppMenu {
                     .h(px(40.0))
             )
             .child(
-                // App grid
+                // App grid - ensure proper horizontal layout with wrapping
                 div()
                     .flex_1()
                     .w_full()
+                    .overflow_hidden()
                     .scrollable(gpui::Axis::Vertical)
                     .child(
                         div()
                             .w_full()
-                            .h_full()
+                            .min_h_full()
                             .flex()
                             .flex_row()
                             .flex_wrap()
-                            .gap_3()
+                            .gap_4()
                             .p_4()
-                            .justify_start()
                             .items_start()
+                            .justify_start()
+                            .content_start()
                             .children(self.filtered_apps.iter().enumerate().map(|(idx, app)| {
                                 Button::new(("app", idx))
                                     .ghost()
                                     .p_2()
                                     .rounded(cx.theme().radius)
-                                    .w(px(90.0)) // Smaller fixed width
-                                    .h(px(90.0)) // Smaller fixed height
+                                    .w(px(90.0)) // Fixed width
+                                    .h(px(90.0)) // Fixed height
+                                    .flex_shrink_0() // Prevent shrinking
+//                                    .flex_grow_0() // Prevent growing
                                     .on_click({
                                         let app_id = app.id.clone();
                                         cx.listener(move |this, _, window, cx| {
