@@ -6,7 +6,7 @@ use gpui::{
 use gpui::prelude::FluentBuilder;
 use gpui_component::{
     button::{Button, ButtonVariants as _}, h_flex, input::{InputEvent, InputState, TextInput},
-    modal::Modal, v_flex, ActiveTheme, Icon, IconName, StyledExt, Selectable
+    v_flex, ActiveTheme, Icon, IconName, StyledExt, Selectable
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -446,28 +446,22 @@ impl Render for AppMenu {
             return div(); // Hidden when closed
         }
 
-        // Full-screen modal overlay
-        Modal::new("app-menu-modal")
+        // Full-screen overlay
+        div()
+            .absolute()
+            .bottom_0()
+            .left_0()
+            .w_full()
+            .h(px(600.0))
+            .bg(cx.theme().background)
+            .border_t_1()
+            .border_color(cx.theme().border)
+            .shadow_xl()
             .child(
-                div()
-                    .absolute()
-                    .bottom_0()
-                    .left_0()
-                    .w_full()
-                    .h(px(600.0))
-                    .bg(cx.theme().background)
-                    .border_t_1()
-                    .border_color(cx.theme().border)
-                    .shadow_xl()
-                    .child(
-                        h_flex()
-                            .size_full()
-                            .child(self.render_category_sidebar(cx))
-                            .child(self.render_app_grid(cx))
-                    )
+                h_flex()
+                    .size_full()
+                    .child(self.render_category_sidebar(cx))
+                    .child(self.render_app_grid(cx))
             )
-            .on_click_outside(cx.listener(|this, _, _, cx| {
-                this.close(cx);
-            }))
     }
 }
