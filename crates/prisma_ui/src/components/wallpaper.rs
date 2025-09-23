@@ -1,7 +1,6 @@
 /// Wallpaper component with image loading and GPU-accelerated effects
 use gpui::{
-    div, img, rgb, Context, Entity, IntoElement, ParentElement, Render,
-    Styled, Window, Bounds, Pixels, AppContext
+    div, img, rgb, AppContext, Bounds, Context, Entity, IntoElement, ParentElement, Pixels, Render, Styled, StyledImage, Window
 };
 use gpui_component::ActiveTheme;
 // use gpui_component::StyledExt;
@@ -85,6 +84,9 @@ impl Wallpaper {
     }
 
     fn render_image(&self, path: &str) -> impl IntoElement {
+        // Debug: print the path being loaded
+        eprintln!("Wallpaper: Attempting to load image: {}", path);
+
         let image = img(path);
 
         // For simplicity, always wrap in a div container
@@ -96,9 +98,9 @@ impl Wallpaper {
             .bg(self.fallback_color)  // Add fallback background color
             .child(
                 match self.mode {
+                    WallpaperMode::Fill => image.size_full().object_fit(gpui::ObjectFit::Cover),
                     WallpaperMode::Stretch => image.size_full(),
-                    WallpaperMode::Fit => image.max_w_full().max_h_full(),
-                    WallpaperMode::Fill => image.size_full(),
+                    WallpaperMode::Fit => image.max_w_full().max_h_full().object_fit(gpui::ObjectFit::Contain),
                     WallpaperMode::Center => image,
                     WallpaperMode::Tile => image,
                 }
