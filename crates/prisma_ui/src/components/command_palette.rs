@@ -1,7 +1,7 @@
 /// Command palette - Spotlight-style quick launcher with fuzzy search
 use gpui::{
     div, px, Action, Context, Entity, FocusHandle, Focusable, InteractiveElement,
-    IntoElement, ParentElement, Render, Styled, Window, App, AppContext
+    IntoElement, ParentElement, Render, Styled, Window, AppContext
 };
 use gpui_component::{
     input::{InputState, TextInput},
@@ -45,7 +45,7 @@ impl Clone for Command {
             id: self.id.clone(),
             title: self.title.clone(),
             subtitle: self.subtitle.clone(),
-            icon: self.icon,
+            icon: self.icon.clone(),
             command_type: self.command_type.clone(),
             keywords: self.keywords.clone(),
             executable: Box::new(|| {}), // Placeholder

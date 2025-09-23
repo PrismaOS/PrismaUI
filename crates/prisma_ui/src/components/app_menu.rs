@@ -324,7 +324,7 @@ impl AppMenu {
                 let count = self.categories.get(&category).map_or(0, |apps| apps.len());
 
                 Button::new(format!("category-{:?}", category).as_str())
-                    .full_width()
+                    .w_full()
                     .ghost()
                     .justify_start()
                     .when(is_active, |btn| btn.selected(true))
@@ -367,7 +367,7 @@ impl AppMenu {
             .child(
                 // Search bar
                 TextInput::new(&self.search_input)
-                    .full_width()
+                    .w_full()
                     .on_input(cx.listener(|this, query, _, cx| {
                         this.search(&query, cx);
                     }))

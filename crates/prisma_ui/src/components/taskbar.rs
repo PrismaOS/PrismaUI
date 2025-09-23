@@ -1,6 +1,6 @@
 /// Taskbar component - window switcher and system tray
 use gpui::{
-    div, px, rgb, Context, Entity, FocusHandle, Focusable, AppContext,
+    div, px, Context, Entity, FocusHandle, Focusable, AppContext,
     IntoElement, ParentElement, Render, Styled, Window, Bounds, Pixels
 };
 use gpui_component::{
@@ -9,7 +9,7 @@ use gpui_component::{
 use chrono::{DateTime, Local};
 use std::collections::HashMap;
 use crate::{
-    window_manager::{WindowId, WindowManager},
+    window_manager::WindowManager,
     components::{AppMenu, CommandPalette}
 };
 
@@ -210,7 +210,7 @@ impl Taskbar {
                     .justify_center()
                     .child(Icon::new(IconName::Menu).size_5())
             )
-            .on_click(cx.listener(|this, _, _, cx| {
+            .on_click(cx.listener(|this, _, window, cx| {
                 this.app_menu.update(cx, |menu, cx| {
                     menu.toggle(window, cx);
                 });

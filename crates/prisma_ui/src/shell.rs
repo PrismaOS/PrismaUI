@@ -1,7 +1,7 @@
 /// System shell component managing desktop interactions and effects
 use gpui::{
     div, px, Context, Entity, FocusHandle, Focusable, IntoElement, ParentElement,
-    Render, Styled, Window, Bounds, Pixels, App, AppContext
+    Render, Styled, Window, Bounds, Pixels, AppContext
 };
 use gpui_component::{ActiveTheme, StyledExt};
 

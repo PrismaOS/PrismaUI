@@ -1,7 +1,7 @@
 /// Desktop environment - main shell orchestrating all components
 use gpui::{
     div, px, size, Bounds, Context, Entity, EventEmitter, FocusHandle, Focusable,
-    IntoElement, ParentElement, Point, Render, Size, Styled, Window, App, AppContext
+    IntoElement, ParentElement, Point, Render, Size, Styled, Window, AppContext
 };
 use gpui_component::{ActiveTheme, StyledExt};
 use serde::{Deserialize, Serialize};

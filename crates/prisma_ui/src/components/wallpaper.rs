@@ -1,9 +1,9 @@
 /// Wallpaper component with image loading and GPU-accelerated effects
 use gpui::{
-    div, img, px, rgb, Context, Entity, IntoElement, ParentElement, Render,
+    div, img, rgb, Context, Entity, IntoElement, ParentElement, Render,
     Styled, Window, Bounds, Pixels, AppContext
 };
-use gpui_component::{ActiveTheme, StyledExt};
+use gpui_component::StyledExt;
 
 /// Wallpaper display modes
 #[derive(Clone, Debug, PartialEq)]
