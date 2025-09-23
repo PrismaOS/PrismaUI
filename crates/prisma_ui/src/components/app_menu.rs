@@ -411,16 +411,16 @@ impl AppMenu {
                     .child(
                         div()
                             .grid()
-                            .grid_cols(5) // More columns for better space utilization
-                            .gap_4()
-                            .p_2()
+                            .grid_cols(4) // 4 columns for better icon size and spacing
+                            .gap_6() // Increased gap for better spacing
+                            .p_4() // More padding around the grid
                             .children(self.filtered_apps.iter().enumerate().map(|(idx, app)| {
                                 Button::new(("app", idx))
                                     .ghost()
-                                    .p_3()
+                                    .p_4() // More padding inside each button
                                     .rounded(cx.theme().radius)
                                     .w_full()
-                                    .h(px(100.0))
+                                    .h(px(120.0)) // Slightly taller for better proportions
                                     .on_click({
                                         let app_id = app.id.clone();
                                         cx.listener(move |this, _, window, cx| {
@@ -432,10 +432,10 @@ impl AppMenu {
                                             .size_full()
                                             .items_center()
                                             .justify_center()
-                                            .gap_2()
+                                            .gap_3() // Increased gap between icon and text
                                             .child(
                                                 div()
-                                                    .size(px(48.0))
+                                                    .size(px(56.0)) // Larger icon container
                                                     .flex()
                                                     .items_center()
                                                     .justify_center()
@@ -443,7 +443,7 @@ impl AppMenu {
                                                     .text_color(cx.theme().primary)
                                                     .rounded(cx.theme().radius)
                                                     .shadow_sm()
-                                                    .child(Icon::new(app.icon.clone()).size_6())
+                                                    .child(Icon::new(app.icon.clone()).size_7()) // Larger icon
                                             )
                                             .child(
                                                 div()

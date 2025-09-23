@@ -8,7 +8,8 @@
       "Bash(mkdir:*)",
       "Bash(cargo:*)",
       "Bash(timeout 8s cargo run -p prisma_ui)",
-      "Bash(timeout 5s cargo run -p prisma_ui)"
+      "Bash(timeout 5s cargo run -p prisma_ui)",
+      "Bash(cp:*)"
     ],
     "deny": [],
     "ask": []

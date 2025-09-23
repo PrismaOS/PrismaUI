@@ -95,9 +95,9 @@ impl Desktop {
 
         // Set up wallpaper with default image
         wallpaper.update(cx, |wallpaper, cx| {
-            // Try to load the smaller logo first to test asset loading
-            eprintln!("Desktop: Setting wallpaper to logo.png for testing");
-            wallpaper.set_image(Some("logo.png".to_string()), cx);
+            // Load the default wallpaper
+            eprintln!("Desktop: Setting wallpaper to wallpapers/default_wallpaper.jpg");
+            wallpaper.set_image(Some("wallpapers/default_wallpaper.jpg".to_string()), cx);
         });
 
         // Subscribe to window manager events
