@@ -123,7 +123,6 @@ impl SystemShell {
                                             .child(name)
                                     )
                             )
-                            .tooltip(tooltip)
                     }))
             )
     }
