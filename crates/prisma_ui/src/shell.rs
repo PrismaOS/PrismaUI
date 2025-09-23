@@ -113,7 +113,6 @@ impl SystemShell {
                                             .text_color(cx.theme().foreground)
                                             .rounded(cx.theme().radius)
                                             .shadow_sm()
-                                            .backdrop_blur_sm()
                                             .child(Icon::new(icon).size_6())
                                     )
                                     .child(
@@ -124,7 +123,7 @@ impl SystemShell {
                                             .font_semibold()
                                             .px_1()
                                             .rounded_sm()
-                                            .bg(gpui::rgba(0.0, 0.0, 0.0, 0.5))
+                                            .bg(gpui::rgba(0x000000_80))
                                             .child(name)
                                     )
                             )
