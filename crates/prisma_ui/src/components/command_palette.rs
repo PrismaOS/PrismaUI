@@ -5,6 +5,7 @@ use gpui::{
 };
 use gpui::prelude::FluentBuilder;
 use gpui_component::{
+    button::{Button, ButtonVariants as _},
     input::{InputState, TextInput},
     v_flex, h_flex, ActiveTheme, Icon, IconName, StyledExt
 };
@@ -406,11 +407,11 @@ impl Render for CommandPalette {
         // Center overlay
                 div()
                     .absolute()
-                    .top_0()
-                    .left_1_2()
-                    .transform_translate_x_1_2()
-                    .mt(px(100.0))
+                    .top(px(100.0))
+                    .left(px(50.0))
+                    .right(px(50.0))
                     .w(px(600.0))
+                    .mx_auto()
                     .max_h(px(500.0))
                     .bg(cx.theme().background)
                     .border_1()
