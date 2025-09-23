@@ -38,7 +38,7 @@ impl Wallpaper {
         Self {
             image_path: None,
             mode: WallpaperMode::Fill,
-            fallback_color: rgb(0x2d3748).into(), // Nice dark blue-gray
+            fallback_color: gpui::Rgba { r: 0.176, g: 0.216, b: 0.282, a: 1.0 }, // Nice dark blue-gray
             bounds,
         }
     }
@@ -93,6 +93,7 @@ impl Wallpaper {
             .flex()
             .items_center()
             .justify_center()
+            .bg(self.fallback_color)  // Add fallback background color
             .child(
                 match self.mode {
                     WallpaperMode::Stretch => image.size_full(),

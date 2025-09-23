@@ -8,6 +8,7 @@ use anyhow;
 #[include = "*.jpeg"]
 #[include = "*.svg"]
 #[include = "*.webp"]
+#[include = "icons/**/*"]
 pub struct Assets;
 
 impl gpui::AssetSource for Assets {

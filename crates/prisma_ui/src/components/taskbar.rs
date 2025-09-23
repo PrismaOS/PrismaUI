@@ -1,6 +1,6 @@
 /// Taskbar component - window switcher and system tray
 use gpui::{
-    div, px, Context, Entity, FocusHandle, Focusable, AppContext,
+    div, img, px, Context, Entity, FocusHandle, Focusable, AppContext,
     IntoElement, ParentElement, Render, Styled, Window, Bounds, Pixels
 };
 use gpui::prelude::FluentBuilder;
@@ -14,11 +14,20 @@ use crate::{
     components::{AppMenu, CommandPalette}
 };
 
+/// Icon type for tray icons
+#[derive(Clone)]
+pub enum TrayIconType {
+    /// Use a built-in icon from IconName
+    Icon(IconName),
+    /// Use an image from file path
+    Image(String),
+}
+
 /// System tray icon
 #[derive(Clone)]
 pub struct TrayIcon {
     pub id: String,
-    pub icon: IconName,
+    pub icon: TrayIconType,
     pub tooltip: String,
     pub badge_count: Option<u32>,
 }
@@ -52,6 +61,16 @@ pub struct Taskbar {
     focus_handle: FocusHandle,
 }
 
+impl TrayIcon {
+    /// Render the icon based on its type
+    fn render_icon(&self) -> impl IntoElement {
+        match &self.icon {
+            TrayIconType::Icon(icon_name) => Icon::new(icon_name.clone()).size_4().into_any_element(),
+            TrayIconType::Image(path) => img(path.clone()).w_4().h_4().into_any_element(),
+        }
+    }
+}
+
 impl Taskbar {
     pub fn new(
         bounds: Bounds<Pixels>,
@@ -65,28 +84,28 @@ impl Taskbar {
         // Add default system tray icons
         tray_icons.insert("network".to_string(), TrayIcon {
             id: "network".to_string(),
-            icon: IconName::Globe,
+            icon: TrayIconType::Image("icons/network.png".to_string()),
             tooltip: "Network: Connected".to_string(),
             badge_count: None,
         });
 
         tray_icons.insert("battery".to_string(), TrayIcon {
             id: "battery".to_string(),
-            icon: IconName::SquareTerminal,
+            icon: TrayIconType::Image("icons/battery.png".to_string()),
             tooltip: "Battery: 85%".to_string(),
             badge_count: None,
         });
 
         tray_icons.insert("sound".to_string(), TrayIcon {
             id: "sound".to_string(),
-            icon: IconName::Settings,
+            icon: TrayIconType::Image("icons/volume.png".to_string()),
             tooltip: "Volume: 70%".to_string(),
             badge_count: None,
         });
 
         tray_icons.insert("notifications".to_string(), TrayIcon {
             id: "notifications".to_string(),
-            icon: IconName::Bell,
+            icon: TrayIconType::Image("icons/bell.png".to_string()),
             tooltip: "Notifications".to_string(),
             badge_count: Some(3),
         });
@@ -204,12 +223,14 @@ impl Taskbar {
         Button::new("start-button")
             .primary()
             .size(px(40.0))
+            .bg(cx.theme().accent.opacity(0.8))  // Darker semi-transparent background
+            //.hover(|this| this.bg(cx.theme().accent))  // Full accent color on hover
             .child(
                 div()
                     .flex()
                     .items_center()
                     .justify_center()
-                    .child(Icon::new(IconName::Menu).size_5())
+                    .child(img("icons/menu.png").w_5().h_5())
             )
             .on_click(cx.listener(|this, _, window, cx| {
                 this.app_menu.update(cx, |menu, cx| {
@@ -267,7 +288,7 @@ impl Taskbar {
                     .ghost()
                     .compact()
                     .relative()
-                    .child(Icon::new(icon.icon.clone()).size_4())
+                    .child(icon.render_icon())
                     .when_some(icon.badge_count, |this, count| {
                         this.child(
                             div()
@@ -313,7 +334,7 @@ impl Taskbar {
         Button::new("search-button")
             .ghost()
             .size(px(40.0))
-            .child(Icon::new(IconName::Search).size_4())
+            .child(img("icons/search.png").w_4().h_4())
             .tooltip("Search (Ctrl+Space)")
             .on_click(cx.listener(|this, _, window, cx| {
                 this.command_palette.update(cx, |palette, cx| {
