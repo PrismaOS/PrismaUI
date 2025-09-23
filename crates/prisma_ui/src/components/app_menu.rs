@@ -1,6 +1,6 @@
 /// App menu component - Windows Start Menu / macOS Dock hybrid
 use gpui::{
-    div, px, Action, Context, Entity, FocusHandle, Focusable,
+    div, px, Action, Axis, Context, Entity, FocusHandle, Focusable,
     InteractiveElement, IntoElement, ParentElement, Render, Styled, Window, AppContext
 };
 use gpui::prelude::FluentBuilder;
@@ -25,7 +25,7 @@ pub struct AppEntry {
 }
 
 /// App menu categories
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum AppCategory {
     Pinned,
     RecentlyUsed,
@@ -330,11 +330,12 @@ impl AppMenu {
             .border_color(cx.theme().border)
             .p_2()
             .gap_1()
-            .children(categories.iter().map(|category| {
+            .children(categories.iter().cloned().map(|category| {
                 let is_active = category == self.active_category;
                 let count = self.categories.get(&category).map_or(0, |apps| apps.len());
+                let button_id = format!("category-{:?}", category);
 
-                Button::new(format!("category-{:?}", category).as_str())
+                Button::new(button_id.as_str())
                     .w_full()
                     .ghost()
                     .justify_start()
@@ -349,7 +350,7 @@ impl AppMenu {
                                     .items_center()
                                     .gap_2()
                                     .child(Icon::new(category.icon()).size_4())
-                                    .child(category.display_name())
+                                    .child(category.display_name().to_string())
                             )
                             .when(count > 0, |this| {
                                 this.child(
@@ -384,14 +385,16 @@ impl AppMenu {
                 // App grid
                 div()
                     .flex_1()
-                    .overflow_y_auto()
+                    .scrollable(Axis::Vertical)
                     .child(
                         div()
                             .grid()
                             .grid_cols(4)
                             .gap_3()
                             .children(self.filtered_apps.iter().map(|app| {
+                                let app_div_id = format!("app-{}", app.id);
                                 div()
+                                    .id(app_div_id.as_str())
                                     .p_3()
                                     .rounded(cx.theme().radius)
                                     .bg(cx.theme().background)
@@ -425,14 +428,14 @@ impl AppMenu {
                                                     .text_sm()
                                                     .font_semibold()
                                                     .text_center()
-                                                    .child(&app.name)
+                                                    .child(app.name.clone())
                                             )
                                             .child(
                                                 div()
                                                     .text_xs()
                                                     .text_color(cx.theme().muted_foreground)
                                                     .text_center()
-                                                    .child(&app.description)
+                                                    .child(app.description.clone())
                                             )
                                     )
                             }))
