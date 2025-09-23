@@ -2,9 +2,10 @@
 use gpui::{
     div, px, size, AnyElement, App, AppContext, Bounds, Context,
     Entity, EventEmitter, FocusHandle, Focusable, InteractiveElement,
-    IntoElement, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, ParentElement, Pixels,
+    IntoElement, MouseButton, MouseDownEvent, MouseMoveEvent, ParentElement, Pixels,
     Point, Render, Size, Styled, WeakEntity, Window
 };
+use gpui::prelude::FluentBuilder;
 use gpui_component::{
     button::{Button, ButtonVariants as _}, h_flex, v_flex, ActiveTheme, IconName, StyledExt
 };
@@ -419,7 +420,7 @@ impl Render for WindowManager {
 pub struct ManagedWindow {
     pub id: WindowId,
     pub title: String,
-    pub content: AnyElement,
+    pub content: Option<AnyElement>,
     pub bounds: Bounds<Pixels>,
     pub restored_bounds: Bounds<Pixels>,
     pub minimized: bool,
@@ -441,7 +442,7 @@ impl ManagedWindow {
         Self {
             id,
             title,
-            content: content.into_any_element(),
+            content: Some(content.into_any_element()),
             bounds,
             restored_bounds: bounds,
             minimized: false,
@@ -574,7 +575,7 @@ impl Render for ManagedWindow {
                         div()
                             .flex_1()
                             .overflow_hidden()
-                            .child(self.content)
+                            .child(self.content.take().unwrap_or_else(|| div()))
                     )
             )
     }
