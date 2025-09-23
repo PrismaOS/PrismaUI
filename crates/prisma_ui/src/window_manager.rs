@@ -875,11 +875,12 @@ impl ManagedWindow {
             .child(
                 // Window controls
                 h_flex()
-                    .gap_1()
+                    .gap_2()
                     .child(
                         Button::new("minimize")
                             .ghost()
-                            .compact()
+                            .size(px(24.0))
+                            .text_color(if focused { cx.theme().accent_foreground } else { cx.theme().muted_foreground })
                             .icon(IconName::Minus)
                             .on_click(cx.listener(move |_, _, window, cx| {
                                 if let Some(wm) = wm2.upgrade() {
@@ -890,7 +891,8 @@ impl ManagedWindow {
                     .child(
                         Button::new("maximize")
                             .ghost()
-                            .compact()
+                            .size(px(24.0))
+                            .text_color(if focused { cx.theme().accent_foreground } else { cx.theme().muted_foreground })
                             .icon(if self.maximized { IconName::Minimize } else { IconName::Maximize })
                             .on_click(cx.listener(move |_, _, window, cx| {
                                 if let Some(wm) = wm3.upgrade() {
@@ -901,8 +903,10 @@ impl ManagedWindow {
                     .child(
                         Button::new("close")
                             .ghost()
-                            .compact()
+                            .size(px(24.0))
+                            .text_color(if focused { cx.theme().accent_foreground } else { cx.theme().muted_foreground })
                             .icon(IconName::Close)
+                            .hover(|style| style.bg(gpui::red()).text_color(gpui::white()))
                             .on_click(cx.listener(move |_, _, window, cx| {
                                 if let Some(wm) = wm4.upgrade() {
                                     wm.update(cx, |wm, cx| wm.close_window(window_id, window, cx));

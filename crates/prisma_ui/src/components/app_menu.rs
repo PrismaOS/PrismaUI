@@ -410,17 +410,19 @@ impl AppMenu {
                     .scrollable(gpui::Axis::Vertical)
                     .child(
                         div()
+                            .w_full()
                             .grid()
                             .grid_cols(4) // 4 columns for better icon size and spacing
-                            .gap_6() // Increased gap for better spacing
-                            .p_4() // More padding around the grid
+                            .gap_x(px(24.0)) // Horizontal gap between columns
+                            .gap_y(px(20.0)) // Vertical gap between rows
+                            .p_6() // Padding around the entire grid
                             .children(self.filtered_apps.iter().enumerate().map(|(idx, app)| {
                                 Button::new(("app", idx))
                                     .ghost()
-                                    .p_4() // More padding inside each button
+                                    .p_2() // Reduced padding to prevent overlap
                                     .rounded(cx.theme().radius)
                                     .w_full()
-                                    .h(px(120.0)) // Slightly taller for better proportions
+                                    .h(px(110.0)) // Adjusted height for better fit
                                     .on_click({
                                         let app_id = app.id.clone();
                                         cx.listener(move |this, _, window, cx| {
