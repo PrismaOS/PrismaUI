@@ -207,9 +207,8 @@ impl BrowserWindow {
         self.tab_manager.close_tab(tab_id);
 
         // Update URL input for new active tab
-        if let Some(active_tab) = self.tab_manager.get_active_tab() {
-            let url = active_tab.url.clone();
-            self.update_url_input(&url, window, cx);
+        if let Some(tab) = self.tab_manager.get_active_tab() {
+            self.update_url_input(&tab.url, window, cx);
         }
 
         cx.notify();
@@ -244,7 +243,7 @@ impl Render for BrowserWindow {
                             .icon(IconName::Close)
                             .ghost()
                             .xsmall()
-                            .on_click(cx.listener(move |this: &mut BrowserWindow, _, window, cx| {
+                            .on_click(cx.listener(move |this: &mut BrowserWindow, _, _, window, cx| {
                                 this.close_tab_by_id(tab_id, window, cx);
                             }))
                     )
