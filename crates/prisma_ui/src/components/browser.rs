@@ -229,7 +229,7 @@ impl Browser {
         }
     }
 
-    fn on_tab_click(&mut self, tab_index: &usize, cx: &mut Context<Self>) {
+    fn on_tab_click(&mut self, tab_index: &usize, _window: &mut Window, cx: &mut Context<Self>) {
         let tabs: Vec<_> = self.tab_manager.get_all_tabs().iter().map(|tab| tab.id).collect();
         if let Some(&tab_id) = tabs.get(*tab_index) {
             self.tab_manager.set_active_tab(tab_id);
