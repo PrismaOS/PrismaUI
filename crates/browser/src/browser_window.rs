@@ -74,31 +74,63 @@ impl BrowserWindow {
         cx.notify();
     }
 
-    fn on_webview_event(
+    fn on_address_changed(
         &mut self,
         webview: Entity<WebView>,
-        event: &dyn std::any::Any,
+        event: &AddressChangedEvent,
         cx: &mut Context<Self>,
     ) {
-        // Find the tab that owns this webview
-        let tab_id = self.tab_manager.get_all_tabs()
-            .iter()
-            .find(|tab| tab.webview == webview)
-            .map(|tab| tab.id);
-
+        let tab_id = self.find_tab_by_webview(webview);
         if let Some(tab_id) = tab_id {
-            if let Some(event) = event.downcast_ref::<AddressChangedEvent>() {
-                self.tab_manager.update_tab_url(tab_id, event.url.clone());
-                // URL will be updated in render cycle
-            } else if let Some(event) = event.downcast_ref::<TitleChangedEvent>() {
-                self.tab_manager.update_tab_title(tab_id, event.title.clone());
-            } else if let Some(_) = event.downcast_ref::<LoadStartEvent>() {
-                self.tab_manager.set_tab_loading(tab_id, true);
-            } else if let Some(_) = event.downcast_ref::<LoadEndEvent>() {
-                self.tab_manager.set_tab_loading(tab_id, false);
-            }
+            self.tab_manager.update_tab_url(tab_id, event.url.clone());
             cx.notify();
         }
+    }
+
+    fn on_title_changed(
+        &mut self,
+        webview: Entity<WebView>,
+        event: &TitleChangedEvent,
+        cx: &mut Context<Self>,
+    ) {
+        let tab_id = self.find_tab_by_webview(webview);
+        if let Some(tab_id) = tab_id {
+            self.tab_manager.update_tab_title(tab_id, event.title.clone());
+            cx.notify();
+        }
+    }
+
+    fn on_load_start(
+        &mut self,
+        webview: Entity<WebView>,
+        _event: &LoadStartEvent,
+        cx: &mut Context<Self>,
+    ) {
+        let tab_id = self.find_tab_by_webview(webview);
+        if let Some(tab_id) = tab_id {
+            self.tab_manager.set_tab_loading(tab_id, true);
+            cx.notify();
+        }
+    }
+
+    fn on_load_end(
+        &mut self,
+        webview: Entity<WebView>,
+        _event: &LoadEndEvent,
+        cx: &mut Context<Self>,
+    ) {
+        let tab_id = self.find_tab_by_webview(webview);
+        if let Some(tab_id) = tab_id {
+            self.tab_manager.set_tab_loading(tab_id, false);
+            cx.notify();
+        }
+    }
+
+    fn find_tab_by_webview(&self, webview: Entity<WebView>) -> Option<usize> {
+        self.tab_manager.get_all_tabs()
+            .iter()
+            .find(|tab| tab.webview == webview)
+            .map(|tab| tab.id)
     }
 
     fn update_url_input(&mut self, url: &str, window: &mut Window, cx: &mut Context<Self>) {
@@ -144,8 +176,9 @@ impl BrowserWindow {
         let tabs: Vec<_> = self.tab_manager.get_all_tabs().iter().map(|tab| tab.id).collect();
         if let Some(&tab_id) = tabs.get(*tab_index) {
             self.tab_manager.set_active_tab(tab_id);
-            if let Some(tab) = self.tab_manager.get_active_tab() {
-                self.update_url_input(&tab.url, window, cx);
+            if let Some(active_tab) = self.tab_manager.get_active_tab() {
+                let url = active_tab.url.clone();
+                self.update_url_input(&url, window, cx);
             }
             cx.notify();
         }
@@ -161,8 +194,9 @@ impl BrowserWindow {
             self.tab_manager.close_tab(active_tab_id);
 
             // Update URL input for new active tab
-            if let Some(tab) = self.tab_manager.get_active_tab() {
-                self.update_url_input(&tab.url, window, cx);
+            if let Some(active_tab) = self.tab_manager.get_active_tab() {
+                let url = active_tab.url.clone();
+                self.update_url_input(&url, window, cx);
             }
 
             cx.notify();
