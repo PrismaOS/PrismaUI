@@ -285,7 +285,7 @@ impl Desktop {
                     );
                 }
                 "file_manager" => {
-                    let content = FileExplorer::create(window, cx);
+                    let content = cx.new(|cx| FileExplorer::new(window, cx));
                     self.create_app_window(
                         "File Explorer".to_string(),
                         content,
@@ -324,7 +324,7 @@ impl Desktop {
                     );
                 }
                 "settings" => {
-                    let content = Settings::create(window, cx);
+                    let content = cx.new(|cx| Settings::new(window, cx));
                     self.create_app_window(
                         "System Settings".to_string(),
                         content,

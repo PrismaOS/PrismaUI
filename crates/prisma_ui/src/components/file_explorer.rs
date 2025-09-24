@@ -202,6 +202,50 @@ pub struct FileExplorer {
 }
 
 impl FileExplorer {
+    pub fn new_simple() -> Self {
+        // Create a very simple version for testing
+        let current_path = PathBuf::from("C:\\Users");
+        Self {
+            current_path: current_path.clone(),
+            history: vec![current_path],
+            history_index: 0,
+            items: vec![
+                FileItem {
+                    name: "Documents".to_string(),
+                    path: PathBuf::from("C:\\Users\\Documents"),
+                    item_type: FileItemType::Directory,
+                    size: None,
+                    modified: Some(std::time::SystemTime::now()),
+                    permissions: Some("rwx".to_string()),
+                    is_hidden: false,
+                },
+                FileItem {
+                    name: "Downloads".to_string(),
+                    path: PathBuf::from("C:\\Users\\Downloads"),
+                    item_type: FileItemType::Directory,
+                    size: None,
+                    modified: Some(std::time::SystemTime::now()),
+                    permissions: Some("rwx".to_string()),
+                    is_hidden: false,
+                },
+            ],
+            selected_items: Vec::new(),
+            view_mode: ViewMode::Icons,
+            search_input: unsafe { std::mem::zeroed() }, // Temporary - won't use this field in simple render
+            show_hidden: false,
+            sidebar_locations: vec![
+                SidebarLocation::Home,
+                SidebarLocation::Documents,
+                SidebarLocation::Downloads,
+            ],
+            active_location: Some(SidebarLocation::Home),
+            clipboard: Vec::new(),
+            clipboard_cut: false,
+            focus_handle: unsafe { std::mem::zeroed() }, // Temporary - won't use this field in simple render
+            loading: false,
+        }
+    }
+
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         let search_input = cx.new(|cx| {
             InputState::new(window, cx)

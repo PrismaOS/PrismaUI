@@ -91,7 +91,7 @@ impl Taskbar {
 
         tray_icons.insert("battery".to_string(), TrayIcon {
             id: "battery".to_string(),
-            icon: TrayIconType::Image("icons/battery/75-percent-512.png".to_string()),
+            icon: TrayIconType::Image("icons/battery/almost-empty-512.png".to_string()),
             tooltip: "Battery: 85%".to_string(),
             badge_count: None,
         });

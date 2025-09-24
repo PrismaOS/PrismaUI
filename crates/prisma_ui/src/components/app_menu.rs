@@ -327,13 +327,13 @@ impl AppMenu {
         ];
 
         v_flex()
-            .w(px(180.0))
+            .w(px(200.0))
             .h_full()
             .bg(cx.theme().sidebar.opacity(0.8))
             .border_r_1()
             .border_color(cx.theme().border.opacity(0.5))
-            .p_3()
-            .gap_2()
+            .p_4()
+            .gap_3()
             .scrollable(gpui::Axis::Vertical)
             .children(categories.iter().cloned().enumerate().map(|(idx, category)| {
                 let is_active = category == self.active_category;
@@ -398,75 +398,80 @@ impl AppMenu {
             .h_full()
             .flex()
             .flex_col()
-            .p_4()
-            .gap_4()
+            .p_6()
+            .gap_6()
             .child(
                 // Search bar
                 TextInput::new(&self.search_input)
                     .w_full()
-                    .h(px(40.0))
+                    .h(px(42.0))
+                    .px_4()
+                    .rounded_lg()
             )
             .child(
-                // App grid - ensure proper horizontal layout with wrapping
+                // App grid container with proper spacing
                 div()
                     .flex_1()
                     .w_full()
                     .overflow_hidden()
                     .scrollable(gpui::Axis::Vertical)
                     .child(
+                        // Grid layout using CSS Grid approach
                         div()
                             .w_full()
-                            .min_h_full()
                             .flex()
                             .flex_row()
                             .flex_wrap()
-                            .gap_4()
-                            .p_4()
-                            .items_start()
+                            .gap_6()
                             .justify_start()
-                            .content_start()
+                            .items_start()
                             .children(self.filtered_apps.iter().enumerate().map(|(idx, app)| {
-                                Button::new(("app", idx))
-                                    .ghost()
-                                    .p_2()
-                                    .rounded(cx.theme().radius)
-                                    .w(px(90.0)) // Fixed width
-                                    .h(px(90.0)) // Fixed height
-                                    .flex_shrink_0() // Prevent shrinking
-//                                    .flex_grow_0() // Prevent growing
-                                    .on_click({
-                                        let app_id = app.id.clone();
-                                        cx.listener(move |this, _, window, cx| {
-                                            this.launch_app(&app_id, window, cx);
-                                        })
-                                    })
+                                div()
+                                    .w(px(100.0))
+                                    .h(px(120.0))
+                                    .flex()
+                                    .flex_col()
+                                    .items_center()
+                                    .gap_2()
                                     .child(
-                                        v_flex()
-                                            .size_full()
+                                        Button::new(("app", idx))
+                                            .ghost()
+                                            .p_3()
+                                            .rounded_xl()
+                                            .w(px(80.0))
+                                            .h(px(80.0))
+                                            .flex()
                                             .items_center()
                                             .justify_center()
-                                            .gap_1() // Smaller gap for 90px button
+                                            .on_click({
+                                                let app_id = app.id.clone();
+                                                cx.listener(move |this, _, window, cx| {
+                                                    this.launch_app(&app_id, window, cx);
+                                                })
+                                            })
                                             .child(
                                                 div()
-                                                    .size(px(36.0)) // Icon container sized for 90px button
+                                                    .w(px(56.0))
+                                                    .h(px(56.0))
                                                     .flex()
                                                     .items_center()
                                                     .justify_center()
                                                     .bg(cx.theme().primary.opacity(0.1))
                                                     .text_color(cx.theme().primary)
-                                                    .rounded(cx.theme().radius)
-                                                    .shadow_sm()
-                                                    .child(Icon::new(app.icon.clone()).size_5()) // Smaller icon
+                                                    .rounded_xl()
+                                                    .child(Icon::new(app.icon.clone()).size_6())
                                             )
-                                            .child(
-                                                div()
-                                                    .text_xs()
-                                                    .font_medium()
-                                                    .text_center()
-                                                    .text_color(cx.theme().foreground)
-                                                    .line_clamp(2)
-                                                    .child(app.name.clone())
-                                            )
+                                    )
+                                    .child(
+                                        div()
+                                            .w_full()
+                                            .text_xs()
+                                            .font_medium()
+                                            .text_center()
+                                            .text_color(cx.theme().foreground)
+                                            .line_clamp(2)
+                                            .px_1()
+                                            .child(app.name.clone())
                                     )
                             }))
                     )
@@ -603,7 +608,7 @@ impl Render for AppMenu {
             .absolute()
             .bottom(px(56.0)) // Above taskbar
             .left(px(12.0)) // Left aligned
-            .w(px(680.0)) // Slightly wider for better layout
+            .w(px(750.0)) // Wider for better app grid layout
             .h(px(720.0)) // Taller for additional sections
             .bg(cx.theme().background.opacity(0.95))
             .border_1()

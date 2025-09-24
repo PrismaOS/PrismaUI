@@ -10,7 +10,10 @@
       "Bash(timeout 8s cargo run -p prisma_ui)",
       "Bash(timeout 5s cargo run -p prisma_ui)",
       "Bash(cp:*)",
-      "Read(//c/Users/redst/Pictures/Screenshots 1/**)"
+      "Read(//c/Users/redst/Pictures/Screenshots 1/**)",
+      "Bash(timeout 15s cargo check -p prisma_ui)",
+      "Bash(timeout 10s cargo check -p prisma_ui)",
+      "Bash(timeout 8s cargo check -p prisma_ui)"
     ],
     "deny": [],
     "ask": []

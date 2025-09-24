@@ -36,7 +36,7 @@ impl Wallpaper {
     pub fn new(bounds: Bounds<Pixels>) -> Self {
         Self {
             image_path: None,
-            mode: WallpaperMode::Fill,
+            mode: WallpaperMode::Fit,
             fallback_color: gpui::Rgba { r: 0.176, g: 0.216, b: 0.282, a: 1.0 }, // Nice dark blue-gray
             bounds,
         }
@@ -103,10 +103,10 @@ impl Wallpaper {
             .bg(self.fallback_color)  // Add fallback background color
             .child(
                 match self.mode {
-                    WallpaperMode::Fill => image.object_fit(gpui::ObjectFit::Cover),
+                    WallpaperMode::Fill => image.object_fit(gpui::ObjectFit::Fill),
                     WallpaperMode::Stretch => image,
                     WallpaperMode::Fit => image.object_fit(gpui::ObjectFit::Contain),
-                    WallpaperMode::Center => image,
+                    WallpaperMode::Center => image.object_fit(gpui::ObjectFit::ScaleDown),
                     WallpaperMode::Tile => image,
                 }
             )

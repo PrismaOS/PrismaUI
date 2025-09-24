@@ -1,6 +1,6 @@
 /// Core window management system with GPU-backed compositing
 use gpui::{
-    div, px, size, AnyElement, App, AppContext, Bounds, Context,
+    div, px, size, AnyElement, AnyView, App, AppContext, Bounds, Context,
     Entity, EventEmitter, FocusHandle, Focusable, InteractiveElement,
     IntoElement, MouseButton, MouseDownEvent, MouseMoveEvent, ParentElement, Pixels,
     Point, Render, Size, Styled, WeakEntity, Window, ElementId, Animation, AnimationExt
@@ -157,7 +157,7 @@ impl WindowManager {
         let managed_window = cx.new(|cx| ManagedWindow::new(
             id,
             title,
-            content,
+            content.into(),
             bounds,
             weak_self,
             cx,
@@ -678,7 +678,7 @@ impl Render for WindowManager {
 pub struct ManagedWindow {
     pub id: WindowId,
     pub title: String,
-    pub content: Option<AnyElement>,
+    pub content_view: AnyView,
     pub bounds: Bounds<Pixels>,
     pub restored_bounds: Bounds<Pixels>,
     pub minimized: bool,
@@ -692,10 +692,10 @@ pub struct ManagedWindow {
 }
 
 impl ManagedWindow {
-    pub fn new<V: IntoElement>(
+    pub fn new(
         id: WindowId,
         title: String,
-        content: V,
+        content_view: AnyView,
         bounds: Bounds<Pixels>,
         window_manager: WeakEntity<WindowManager>,
         cx: &mut Context<Self>,
@@ -703,7 +703,7 @@ impl ManagedWindow {
         Self {
             id,
             title,
-            content: Some(content.into_any_element()),
+            content_view,
             bounds,
             restored_bounds: bounds,
             minimized: false,
@@ -1025,7 +1025,7 @@ impl Render for ManagedWindow {
                         div()
                             .flex_1()
                             .overflow_hidden()
-                            .child(self.content.take().unwrap_or_else(|| div().into_any_element()))
+                            .child(self.content_view.clone())
                     )
             )
             .child(self.render_resize_handles(window_manager, cx));
