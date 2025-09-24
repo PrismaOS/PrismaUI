@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     window_manager::{WindowManager, WindowEvent},
-    components::{AppMenu, CommandPalette, Taskbar, Wallpaper, app_menu::AppMenuAction},
+    components::{AppMenu, CommandPalette, FileExplorer, Settings, Taskbar, Wallpaper, app_menu::AppMenuAction},
     shell::SystemShell,
 };
 
@@ -285,9 +285,9 @@ impl Desktop {
                     );
                 }
                 "file_manager" => {
-                    let content = cx.new(|_| FileManagerApp::new());
+                    let content = FileExplorer::create(window, cx);
                     self.create_app_window(
-                        "File Manager".to_string(),
+                        "File Explorer".to_string(),
                         content,
                         Some(Bounds {
                             origin: Point { x: px(300.0), y: px(200.0) },
@@ -324,13 +324,13 @@ impl Desktop {
                     );
                 }
                 "settings" => {
-                    let content = cx.new(|_| SettingsApp::new());
+                    let content = Settings::create(window, cx);
                     self.create_app_window(
                         "System Settings".to_string(),
                         content,
                         Some(Bounds {
                             origin: Point { x: px(250.0), y: px(150.0) },
-                            size: size(px(800.0), px(600.0)),
+                            size: size(px(900.0), px(700.0)),
                         }),
                         window,
                         cx,
@@ -608,80 +608,6 @@ impl Render for CodeEditorApp {
     }
 }
 
-/// File Manager Application
-pub struct FileManagerApp {
-    current_path: String,
-    files: Vec<String>,
-}
-
-impl FileManagerApp {
-    pub fn new() -> Self {
-        Self {
-            current_path: "/home/user".to_string(),
-            files: vec![
-                "Documents".to_string(),
-                "Downloads".to_string(),
-                "Pictures".to_string(),
-                "Videos".to_string(),
-                "Music".to_string(),
-            ],
-        }
-    }
-}
-
-impl Render for FileManagerApp {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        use gpui_component::{v_flex, h_flex, button::{Button, ButtonVariants as _}, Icon, IconName};
-
-        v_flex()
-            .size_full()
-            .bg(cx.theme().background)
-            .child(
-                // Toolbar
-                h_flex()
-                    .h(px(40.0))
-                    .items_center()
-                    .px_4()
-                    .bg(cx.theme().sidebar)
-                    .border_b_1()
-                    .border_color(cx.theme().border)
-                    .gap_2()
-                    .child(Button::new("back").ghost().child(Icon::new(IconName::ArrowLeft).size_4()))
-                    .child(Button::new("forward").ghost().child(Icon::new(IconName::ArrowRight).size_4()))
-                    .child(
-                        div()
-                            .flex_1()
-                            .px_3()
-                            .py_1()
-                            .bg(cx.theme().input)
-                            .border_1()
-                            .border_color(cx.theme().border)
-                            .rounded(cx.theme().radius)
-                            .child(self.current_path.clone())
-                    )
-            )
-            .child(
-                // File list
-                div()
-                    .flex_1()
-                    .p_4()
-                    .child(
-                        v_flex()
-                            .gap_2()
-                            .children(self.files.iter().map(|file| {
-                                h_flex()
-                                    .items_center()
-                                    .gap_3()
-                                    .p_2()
-                                    .rounded(cx.theme().radius)
-                                    .hover(|style| style.bg(cx.theme().accent.opacity(0.1)))
-                                    .child(Icon::new(IconName::Folder).size_5().text_color(cx.theme().primary))
-                                    .child(file.clone())
-                            }))
-                    )
-            )
-    }
-}
 
 /// Web Browser Application
 pub struct WebBrowserApp {
@@ -828,71 +754,3 @@ impl Render for CalculatorApp {
     }
 }
 
-/// Settings Application
-pub struct SettingsApp {
-    active_section: String,
-}
-
-impl SettingsApp {
-    pub fn new() -> Self {
-        Self {
-            active_section: "General".to_string(),
-        }
-    }
-}
-
-impl Render for SettingsApp {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        use gpui_component::{v_flex, h_flex, button::{Button, ButtonVariants as _}, Icon, IconName, Selectable as _};
-
-        h_flex()
-            .size_full()
-            .bg(cx.theme().background)
-            .child(
-                // Settings sidebar
-                v_flex()
-                    .w(px(200.0))
-                    .h_full()
-                    .bg(cx.theme().sidebar)
-                    .border_r_1()
-                    .border_color(cx.theme().border)
-                    .p_3()
-                    .gap_2()
-                    .children(["General", "Display", "Audio", "Network", "Privacy", "Updates"].iter().enumerate().map(|(idx, section)| {
-                        let is_active = section == &self.active_section;
-                        Button::new(("setting", idx))
-                            .w_full()
-                            .ghost()
-                            .justify_start()
-                            .when(is_active, |btn| btn.selected(true))
-                            .child(
-                                h_flex()
-                                    .items_center()
-                                    .gap_3()
-                                    .child(Icon::new(IconName::Settings).size_4())
-                                    .child(section.to_string())
-                            )
-                    }))
-            )
-            .child(
-                // Settings content
-                v_flex()
-                    .flex_1()
-                    .p_6()
-                    .gap_4()
-                    .child(
-                        div()
-                            .text_2xl()
-                            .font_bold()
-                            .text_color(cx.theme().foreground)
-                            .child(self.active_section.clone())
-                    )
-                    .child(
-                        div()
-                            .text_base()
-                            .text_color(cx.theme().muted_foreground)
-                            .child(format!("Configure {} settings for your system.", self.active_section.to_lowercase()))
-                    )
-            )
-    }
-}
