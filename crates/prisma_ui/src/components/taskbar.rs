@@ -84,28 +84,28 @@ impl Taskbar {
         // Add default system tray icons
         tray_icons.insert("network".to_string(), TrayIcon {
             id: "network".to_string(),
-            icon: TrayIconType::Icon(IconName::Globe),
+            icon: TrayIconType::Image("icons/network.png".to_string()),
             tooltip: "Network: Connected".to_string(),
             badge_count: None,
         });
 
         tray_icons.insert("battery".to_string(), TrayIcon {
             id: "battery".to_string(),
-            icon: TrayIconType::Icon(IconName::Loader),
+            icon: TrayIconType::Image("icons/battery.png".to_string()),
             tooltip: "Battery: 85%".to_string(),
             badge_count: None,
         });
 
         tray_icons.insert("sound".to_string(), TrayIcon {
             id: "sound".to_string(),
-            icon: TrayIconType::Icon(IconName::Bell),
+            icon: TrayIconType::Image("icons/volume.png".to_string()),
             tooltip: "Volume: 70%".to_string(),
             badge_count: None,
         });
 
         tray_icons.insert("notifications".to_string(), TrayIcon {
             id: "notifications".to_string(),
-            icon: TrayIconType::Icon(IconName::Bell),
+            icon: TrayIconType::Image("icons/bell.png".to_string()),
             tooltip: "Notifications".to_string(),
             badge_count: Some(3),
         });
@@ -230,7 +230,7 @@ impl Taskbar {
                     .flex()
                     .items_center()
                     .justify_center()
-                    .child(Icon::new(IconName::Menu).size_5())
+                    .child(img("icons/menu.png").w_5().h_5())
             )
             .on_click(cx.listener(|this, _, window, cx| {
                 this.app_menu.update(cx, |menu, cx| {
@@ -334,7 +334,7 @@ impl Taskbar {
         Button::new("search-button")
             .ghost()
             .size(px(40.0))
-            .child(Icon::new(IconName::Search).size_4())
+            .child(img("icons/search.png").w_4().h_4())
             .tooltip("Search (Ctrl+Space)")
             .on_click(cx.listener(|this, _, window, cx| {
                 this.command_palette.update(cx, |palette, cx| {
