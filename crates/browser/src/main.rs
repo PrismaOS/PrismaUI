@@ -17,8 +17,9 @@ fn main() -> Result<()> {
             ..Default::default()
         };
 
-        cx.open_window(window_options, |window, cx| BrowserWindow::new(window, cx))
-            .unwrap();
+        cx.open_window(window_options, |window, cx| {
+            cx.new(|cx| BrowserWindow::new(window, cx))
+        }).unwrap();
     });
 
     Ok(())
