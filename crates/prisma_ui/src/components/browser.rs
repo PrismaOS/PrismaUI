@@ -177,7 +177,8 @@ impl Browser {
             if let Some(event) = event.downcast_ref::<AddressChangedEvent>() {
                 self.tab_manager.update_tab_url(tab_id, event.url.clone());
                 if Some(tab_id) == self.tab_manager.get_active_tab_id() {
-                    self.update_url_input(&event.url, cx.window_mut(), cx);
+                    // We'll update URL in the render cycle
+                    // self.update_url_input(&event.url, window, cx);
                 }
             } else if let Some(event) = event.downcast_ref::<TitleChangedEvent>() {
                 self.tab_manager.update_tab_title(tab_id, event.title.clone());
@@ -203,7 +204,7 @@ impl Browser {
         cx: &mut Context<Self>,
     ) {
         match event {
-            InputEvent::Submit => {
+            InputEvent::PressEnter { .. } => {
                 self.on_url_submit_action(cx);
             }
             _ => {}
@@ -233,9 +234,7 @@ impl Browser {
         let tabs: Vec<_> = self.tab_manager.get_all_tabs().iter().map(|tab| tab.id).collect();
         if let Some(&tab_id) = tabs.get(*tab_index) {
             self.tab_manager.set_active_tab(tab_id);
-            if let Some(tab) = self.tab_manager.get_active_tab() {
-                self.update_url_input(&tab.url, cx.window_mut(), cx);
-            }
+            // URL will be updated in render cycle
             cx.notify();
         }
     }
