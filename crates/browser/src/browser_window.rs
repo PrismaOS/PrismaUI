@@ -1,7 +1,7 @@
 use gpui::prelude::*;
 use gpui::{
-    div, App, AppContext, Context, Entity, EventEmitter, FocusHandle, Focusable, Render,
-    StyleRefinement, Styled, Window, ParentElement, EntityInputHandler
+    div, App, Context, Entity, EventEmitter, FocusHandle, Focusable, Render,
+    StyleRefinement, Styled, Window, ViewContext
 };
 use gpui_component::{
     tab::{TabBar, Tab},
@@ -21,9 +21,9 @@ pub struct BrowserWindow {
 }
 
 impl BrowserWindow {
-    pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let url_input = cx.new(|cx| {
-            InputState::new(window, cx).placeholder("Enter URL or search term...".to_string())
+    pub fn new(cx: &mut ViewContext<Self>) -> Self {
+        let url_input = cx.new(|_| {
+            InputState::new().placeholder("Enter URL or search term...".to_string())
         });
         let focus_handle = cx.focus_handle();
 
@@ -38,13 +38,13 @@ impl BrowserWindow {
         cx.subscribe(&url_input, Self::on_url_input_event).detach();
 
         // Create initial tab
-        browser.create_new_tab("https://www.google.com", window, cx);
+        browser.create_new_tab("https://www.google.com", cx);
 
         browser
     }
 
-    fn create_new_tab(&mut self, url: &str, window: &mut Window, cx: &mut Context<Self>) {
-        let webview = WebView::new(url, window, cx);
+    fn create_new_tab(&mut self, url: &str, cx: &mut ViewContext<Self>) {
+        let webview = WebView::new(url, cx.window_mut(), cx);
 
         // Subscribe to webview events
         cx.subscribe(&webview, Self::on_webview_event).detach();
@@ -53,7 +53,7 @@ impl BrowserWindow {
 
         // Set the URL in the input field if this is the active tab
         if Some(tab_id) == self.tab_manager.get_active_tab_id() {
-            self.update_url_input(url, window, cx);
+            self.update_url_input(url, cx);
         }
 
         cx.notify();
@@ -63,7 +63,7 @@ impl BrowserWindow {
         &mut self,
         webview: Entity<WebView>,
         event: &dyn std::any::Any,
-        cx: &mut Context<Self>,
+        cx: &mut ViewContext<Self>,
     ) {
         // Find the tab that owns this webview
         let tab_id = self.tab_manager.get_all_tabs()
@@ -74,7 +74,9 @@ impl BrowserWindow {
         if let Some(tab_id) = tab_id {
             if let Some(event) = event.downcast_ref::<AddressChangedEvent>() {
                 self.tab_manager.update_tab_url(tab_id, event.url.clone());
-                // URL will be updated in render cycle
+                if Some(tab_id) == self.tab_manager.get_active_tab_id() {
+                    self.update_url_input(&event.url, cx);
+                }
             } else if let Some(event) = event.downcast_ref::<TitleChangedEvent>() {
                 self.tab_manager.update_tab_title(tab_id, event.title.clone());
             } else if let Some(_) = event.downcast_ref::<LoadStartEvent>() {
@@ -86,28 +88,26 @@ impl BrowserWindow {
         }
     }
 
-    fn update_url_input(&mut self, url: &str, window: &mut Window, cx: &mut Context<Self>) {
-        self.url_input.update(cx, |input, cx| {
-            input.replace_text_in_range(None, url, window, cx);
+    fn update_url_input(&mut self, url: &str, cx: &mut ViewContext<Self>) {
+        self.url_input.update(cx, |input, _cx| {
+            input.set_text(url.to_string());
         });
     }
 
     fn on_url_input_event(
         &mut self,
         _input: Entity<InputState>,
-        event: &gpui_component::input::InputEvent,
-        cx: &mut Context<Self>,
+        event: &dyn std::any::Any,
+        cx: &mut ViewContext<Self>,
     ) {
-        match event {
-            gpui_component::input::InputEvent::PressEnter { .. } => {
-                self.on_url_submit_action(cx);
-            }
-            _ => {}
+        if let Some(_) = event.downcast_ref::<()>() {
+            // Handle enter key press
+            self.on_url_submit_action(cx);
         }
     }
 
-    fn on_url_submit_action(&mut self, cx: &mut Context<Self>) {
-        let url = self.url_input.read(cx).value().to_string();
+    fn on_url_submit_action(&mut self, cx: &mut ViewContext<Self>) {
+        let url = self.url_input.read(cx).text().to_string();
         if !url.is_empty() {
             let formatted_url = if url.starts_with("http://") || url.starts_with("https://") {
                 url
@@ -125,36 +125,36 @@ impl BrowserWindow {
         }
     }
 
-    fn on_tab_click(&mut self, tab_index: &usize, window: &mut Window, cx: &mut Context<Self>) {
+    fn on_tab_click(&mut self, tab_index: &usize, _window: &mut Window, cx: &mut Context<Self>) {
         let tabs: Vec<_> = self.tab_manager.get_all_tabs().iter().map(|tab| tab.id).collect();
         if let Some(&tab_id) = tabs.get(*tab_index) {
             self.tab_manager.set_active_tab(tab_id);
             if let Some(tab) = self.tab_manager.get_active_tab() {
-                self.update_url_input(&tab.url, window, cx);
+                self.update_url_input(&tab.url, cx);
             }
             cx.notify();
         }
     }
 
 
-    fn create_new_tab_action(&mut self, _event: &gpui::ClickEvent, window: &mut Window, cx: &mut Context<Self>) {
-        self.create_new_tab("https://www.google.com", window, cx);
+    fn create_new_tab_action(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
+        self.create_new_tab("https://www.google.com", cx);
     }
 
-    fn close_current_tab(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    fn close_current_tab(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
         if let Some(active_tab_id) = self.tab_manager.get_active_tab_id() {
             self.tab_manager.close_tab(active_tab_id);
 
             // Update URL input for new active tab
             if let Some(tab) = self.tab_manager.get_active_tab() {
-                self.update_url_input(&tab.url, window, cx);
+                self.update_url_input(&tab.url, cx);
             }
 
             cx.notify();
         }
     }
 
-    fn close_tab_by_id(&mut self, tab_id: usize, window: &mut Window, cx: &mut Context<Self>) {
+    fn close_tab_by_id(&mut self, tab_id: usize, cx: &mut ViewContext<Self>) {
         self.tab_manager.close_tab(tab_id);
 
         // Update URL input for new active tab
