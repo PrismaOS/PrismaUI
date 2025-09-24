@@ -1,15 +1,15 @@
 /// Web browser component for PrismaUI
 use gpui::{
-    div, px, Context, Entity, EventEmitter, FocusHandle, Focusable,
-    IntoElement, Render, Styled, Window, ElementId, WeakEntity
+    div, Context, Entity, EventEmitter, FocusHandle, Focusable,
+    IntoElement, Render, Window, EntityInputHandler
 };
 use gpui::prelude::FluentBuilder;
 use gpui_component::{
     tab::{TabBar, Tab},
     input::{InputState, TextInput, InputEvent},
     button::{Button, ButtonVariants as _},
-    Icon, IconName, Size,
-    h_flex, v_flex, ActiveTheme, StyledExt
+    Icon, IconName, Size, Sizable,
+    h_flex, v_flex, ActiveTheme
 };
 use gpui_webview::{WebView, events::*};
 use std::collections::HashMap;
@@ -263,7 +263,7 @@ impl Focusable for Browser {
 }
 
 impl Render for Browser {
-    fn render(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let tabs: Vec<Tab> = self.tab_manager
             .get_all_tabs()
             .iter()
