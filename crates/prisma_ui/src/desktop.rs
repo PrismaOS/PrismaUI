@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     window_manager::{WindowManager, WindowEvent},
-    components::{AppMenu, CommandPalette, Taskbar, Wallpaper, app_menu::AppMenuAction},
+    components::{AppMenu, Browser, CommandPalette, Taskbar, Wallpaper, app_menu::AppMenuAction},
     shell::SystemShell,
 };
 
@@ -297,8 +297,8 @@ impl Desktop {
                         cx,
                     );
                 }
-                "web_browser" => {
-                    let content = cx.new(|_| WebBrowserApp::new());
+                "browser" => {
+                    let content = cx.new(|cx| Browser::new(window, cx));
                     self.create_app_window(
                         "Web Browser".to_string(),
                         content,

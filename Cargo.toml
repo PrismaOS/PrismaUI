@@ -5,6 +5,7 @@ members = [
     "crates/story",
     "crates/ui",
     "crates/prisma_ui",
+    "crates/browser",
     "crates/wef",
     "crates/wef/tool",
     "crates/wef/examples/wef-winit",
