@@ -1,4 +1,4 @@
-use gpui::{Entity, App};
+use gpui::Entity;
 use gpui_webview::WebView;
 use std::collections::HashMap;
 

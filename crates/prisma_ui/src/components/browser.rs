@@ -1,50 +1,152 @@
-use gpui::prelude::*;
+/// Web browser component for PrismaUI
 use gpui::{
-    div, App, Context, Entity, EventEmitter, FocusHandle, Focusable, Render,
-    StyleRefinement, Styled, Window, ViewContext
+    div, px, Context, Entity, EventEmitter, FocusHandle, Focusable,
+    IntoElement, Render, Styled, Window, ElementId, WeakEntity
 };
+use gpui::prelude::FluentBuilder;
 use gpui_component::{
     tab::{TabBar, Tab},
-    input::{TextInput, InputState},
-    Icon, IconName, Size, Sizable,
-    h_flex, v_flex, ActiveTheme
+    input::{InputState, TextInput, InputEvent},
+    button::{Button, ButtonVariants as _},
+    Icon, IconName, Size,
+    h_flex, v_flex, ActiveTheme, StyledExt
 };
 use gpui_webview::{WebView, events::*};
+use std::collections::HashMap;
 
-use crate::tab_manager::TabManager;
+pub struct BrowserTab {
+    pub id: usize,
+    pub url: String,
+    pub title: String,
+    pub webview: Entity<WebView>,
+    pub is_loading: bool,
+}
 
-pub struct BrowserWindow {
+impl BrowserTab {
+    pub fn new(id: usize, url: String, webview: Entity<WebView>) -> Self {
+        Self {
+            id,
+            url: url.clone(),
+            title: url,
+            webview,
+            is_loading: true,
+        }
+    }
+}
+
+pub struct TabManager {
+    tabs: HashMap<usize, BrowserTab>,
+    active_tab_id: Option<usize>,
+    next_tab_id: usize,
+}
+
+impl TabManager {
+    pub fn new() -> Self {
+        Self {
+            tabs: HashMap::new(),
+            active_tab_id: None,
+            next_tab_id: 0,
+        }
+    }
+
+    pub fn create_tab(&mut self, url: String, webview: Entity<WebView>) -> usize {
+        let tab_id = self.next_tab_id;
+        self.next_tab_id += 1;
+
+        let tab = BrowserTab::new(tab_id, url, webview);
+        self.tabs.insert(tab_id, tab);
+
+        if self.active_tab_id.is_none() {
+            self.active_tab_id = Some(tab_id);
+        }
+
+        tab_id
+    }
+
+    pub fn close_tab(&mut self, tab_id: usize) -> bool {
+        if self.tabs.remove(&tab_id).is_some() {
+            if self.active_tab_id == Some(tab_id) {
+                self.active_tab_id = self.tabs.keys().next().copied();
+            }
+            true
+        } else {
+            false
+        }
+    }
+
+    pub fn set_active_tab(&mut self, tab_id: usize) {
+        if self.tabs.contains_key(&tab_id) {
+            self.active_tab_id = Some(tab_id);
+        }
+    }
+
+    pub fn get_active_tab(&self) -> Option<&BrowserTab> {
+        self.active_tab_id.and_then(|id| self.tabs.get(&id))
+    }
+
+    pub fn get_all_tabs(&self) -> Vec<&BrowserTab> {
+        self.tabs.values().collect()
+    }
+
+    pub fn get_active_tab_id(&self) -> Option<usize> {
+        self.active_tab_id
+    }
+
+    pub fn update_tab_url(&mut self, tab_id: usize, url: String) {
+        if let Some(tab) = self.tabs.get_mut(&tab_id) {
+            tab.url = url.clone();
+            if tab.title.is_empty() || tab.title == tab.url {
+                tab.title = url;
+            }
+        }
+    }
+
+    pub fn update_tab_title(&mut self, tab_id: usize, title: String) {
+        if let Some(tab) = self.tabs.get_mut(&tab_id) {
+            tab.title = title;
+        }
+    }
+
+    pub fn set_tab_loading(&mut self, tab_id: usize, loading: bool) {
+        if let Some(tab) = self.tabs.get_mut(&tab_id) {
+            tab.is_loading = loading;
+        }
+    }
+}
+
+/// Web browser window component
+pub struct Browser {
     tab_manager: TabManager,
     url_input: Entity<InputState>,
     focus_handle: FocusHandle,
-    style: StyleRefinement,
 }
 
-impl BrowserWindow {
-    pub fn new(cx: &mut ViewContext<Self>) -> Self {
-        let url_input = cx.new(|_| {
-            InputState::new().placeholder("Enter URL or search term...".to_string())
+impl Browser {
+    pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
+        let url_input = cx.new(|cx| {
+            InputState::new(window, cx)
+                .placeholder("Enter URL or search term...")
         });
+
         let focus_handle = cx.focus_handle();
 
         let mut browser = Self {
             tab_manager: TabManager::new(),
             url_input,
             focus_handle,
-            style: StyleRefinement::default(),
         };
 
         // Set up URL input handlers
         cx.subscribe(&url_input, Self::on_url_input_event).detach();
 
         // Create initial tab
-        browser.create_new_tab("https://www.google.com", cx);
+        browser.create_new_tab("https://www.google.com", window, cx);
 
         browser
     }
 
-    fn create_new_tab(&mut self, url: &str, cx: &mut ViewContext<Self>) {
-        let webview = WebView::new(url, cx.window_mut(), cx);
+    fn create_new_tab(&mut self, url: &str, window: &mut Window, cx: &mut Context<Self>) {
+        let webview = WebView::new(url, window, cx);
 
         // Subscribe to webview events
         cx.subscribe(&webview, Self::on_webview_event).detach();
@@ -53,7 +155,7 @@ impl BrowserWindow {
 
         // Set the URL in the input field if this is the active tab
         if Some(tab_id) == self.tab_manager.get_active_tab_id() {
-            self.update_url_input(url, cx);
+            self.update_url_input(url, window, cx);
         }
 
         cx.notify();
@@ -63,7 +165,7 @@ impl BrowserWindow {
         &mut self,
         webview: Entity<WebView>,
         event: &dyn std::any::Any,
-        cx: &mut ViewContext<Self>,
+        cx: &mut Context<Self>,
     ) {
         // Find the tab that owns this webview
         let tab_id = self.tab_manager.get_all_tabs()
@@ -75,7 +177,7 @@ impl BrowserWindow {
             if let Some(event) = event.downcast_ref::<AddressChangedEvent>() {
                 self.tab_manager.update_tab_url(tab_id, event.url.clone());
                 if Some(tab_id) == self.tab_manager.get_active_tab_id() {
-                    self.update_url_input(&event.url, cx);
+                    self.update_url_input(&event.url, cx.window_mut(), cx);
                 }
             } else if let Some(event) = event.downcast_ref::<TitleChangedEvent>() {
                 self.tab_manager.update_tab_title(tab_id, event.title.clone());
@@ -88,26 +190,28 @@ impl BrowserWindow {
         }
     }
 
-    fn update_url_input(&mut self, url: &str, cx: &mut ViewContext<Self>) {
-        self.url_input.update(cx, |input, _cx| {
-            input.set_text(url.to_string());
+    fn update_url_input(&mut self, url: &str, window: &mut Window, cx: &mut Context<Self>) {
+        self.url_input.update(cx, |input, cx| {
+            input.replace_text_in_range(None, url, window, cx);
         });
     }
 
     fn on_url_input_event(
         &mut self,
         _input: Entity<InputState>,
-        event: &dyn std::any::Any,
-        cx: &mut ViewContext<Self>,
+        event: &InputEvent,
+        cx: &mut Context<Self>,
     ) {
-        if let Some(_) = event.downcast_ref::<()>() {
-            // Handle enter key press
-            self.on_url_submit_action(cx);
+        match event {
+            InputEvent::Submit => {
+                self.on_url_submit_action(cx);
+            }
+            _ => {}
         }
     }
 
-    fn on_url_submit_action(&mut self, cx: &mut ViewContext<Self>) {
-        let url = self.url_input.read(cx).text().to_string();
+    fn on_url_submit_action(&mut self, cx: &mut Context<Self>) {
+        let url = self.url_input.read(cx).value().to_string();
         if !url.is_empty() {
             let formatted_url = if url.starts_with("http://") || url.starts_with("https://") {
                 url
@@ -125,61 +229,41 @@ impl BrowserWindow {
         }
     }
 
-    fn on_tab_click(&mut self, tab_index: &usize, _window: &mut Window, cx: &mut Context<Self>) {
+    fn on_tab_click(&mut self, tab_index: &usize, cx: &mut Context<Self>) {
         let tabs: Vec<_> = self.tab_manager.get_all_tabs().iter().map(|tab| tab.id).collect();
         if let Some(&tab_id) = tabs.get(*tab_index) {
             self.tab_manager.set_active_tab(tab_id);
             if let Some(tab) = self.tab_manager.get_active_tab() {
-                self.update_url_input(&tab.url, cx);
+                self.update_url_input(&tab.url, cx.window_mut(), cx);
             }
             cx.notify();
         }
     }
 
-
-    fn create_new_tab_action(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
-        self.create_new_tab("https://www.google.com", cx);
+    fn create_new_tab_action(&mut self, cx: &mut Context<Self>) {
+        self.create_new_tab("https://www.google.com", cx.window_mut(), cx);
     }
 
-    fn close_current_tab(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
-        if let Some(active_tab_id) = self.tab_manager.get_active_tab_id() {
-            self.tab_manager.close_tab(active_tab_id);
-
-            // Update URL input for new active tab
-            if let Some(tab) = self.tab_manager.get_active_tab() {
-                self.update_url_input(&tab.url, cx);
-            }
-
-            cx.notify();
-        }
-    }
-
-    fn close_tab_by_id(&mut self, tab_id: usize, cx: &mut ViewContext<Self>) {
+    fn close_tab_by_id(&mut self, tab_id: usize, cx: &mut Context<Self>) {
         self.tab_manager.close_tab(tab_id);
 
         // Update URL input for new active tab
         if let Some(tab) = self.tab_manager.get_active_tab() {
-            self.update_url_input(&tab.url, cx);
+            self.update_url_input(&tab.url, cx.window_mut(), cx);
         }
 
         cx.notify();
     }
 }
 
-impl Styled for BrowserWindow {
-    fn style(&mut self) -> &mut StyleRefinement {
-        &mut self.style
-    }
-}
-
-impl Focusable for BrowserWindow {
-    fn focus_handle(&self, _cx: &App) -> FocusHandle {
+impl Focusable for Browser {
+    fn focus_handle(&self, _cx: &gpui::App) -> FocusHandle {
         self.focus_handle.clone()
     }
 }
 
-impl Render for BrowserWindow {
-    fn render(&mut self, _window: &mut Window, cx: &mut ViewContext<Self>) -> impl IntoElement {
+impl Render for Browser {
+    fn render(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
         let tabs: Vec<Tab> = self.tab_manager
             .get_all_tabs()
             .iter()
@@ -187,16 +271,14 @@ impl Render for BrowserWindow {
             .map(|(index, tab)| {
                 let tab_id = tab.id;
                 Tab::new(&tab.title)
-                    .id(format!("tab-{}", tab_id))
+                    .id(("tab", tab_id))
                     .when(tab.is_loading, |this| this.prefix(Icon::new(IconName::Loader)))
                     .suffix(
-                        div()
-                            .child(Icon::new(IconName::Close).small())
-                            .cursor_pointer()
-                            .p_1()
-                            .rounded_sm()
-                            .hover(|style| style.bg(cx.theme().ghost_element_hover))
-                            .on_mouse_down(gpui::MouseButton::Left, cx.listener(move |this: &mut BrowserWindow, _, _, cx| {
+                        Button::new(("close-tab", tab_id))
+                            .icon(IconName::Close)
+                            .ghost()
+                            .xsmall()
+                            .on_click(cx.listener(move |this: &mut Browser, _, cx| {
                                 this.close_tab_by_id(tab_id, cx);
                             }))
                     )
@@ -223,17 +305,10 @@ impl Render for BrowserWindow {
                             .selected_index(active_tab_index)
                             .on_click(cx.listener(Self::on_tab_click))
                             .suffix(
-                                h_flex()
-                                    .gap_2()
-                                    .child(
-                                        div()
-                                            .cursor_pointer()
-                                            .p_1()
-                                            .rounded_md()
-                                            .hover(|style| style.bg(cx.theme().ghost_element_hover))
-                                            .child("+ New Tab")
-                                            .on_mouse_down(gpui::MouseButton::Left, cx.listener(Self::create_new_tab_action))
-                                    )
+                                Button::new("new-tab")
+                                    .ghost()
+                                    .icon(IconName::Plus)
+                                    .on_click(cx.listener(Self::create_new_tab_action))
                             )
                     )
                     .child(
@@ -260,4 +335,4 @@ impl Render for BrowserWindow {
     }
 }
 
-impl EventEmitter<()> for BrowserWindow {}
+impl EventEmitter<()> for Browser {}
