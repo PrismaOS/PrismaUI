@@ -316,7 +316,7 @@ impl Render for Browser {
             .get_all_tabs()
             .iter()
             .enumerate()
-            .map(|(index, tab)| {
+            .map(|(_index, tab)| {
                 let tab_id = tab.id;
                 Tab::new(&tab.title)
                     .id(("tab", tab_id))
