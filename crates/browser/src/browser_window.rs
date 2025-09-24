@@ -6,7 +6,6 @@ use gpui::{
 use gpui_component::{
     tab::{TabBar, Tab},
     input::{TextInput, InputState},
-    button::Button,
     Icon, IconName, Size, Sizable,
     h_flex, v_flex, ActiveTheme
 };
@@ -160,7 +159,7 @@ impl BrowserWindow {
 
         // Update URL input for new active tab
         if let Some(tab) = self.tab_manager.get_active_tab() {
-            self.update_url_input(&tab.url, window, cx);
+            self.update_url_input(&tab.url, cx);
         }
 
         cx.notify();
@@ -180,7 +179,7 @@ impl Focusable for BrowserWindow {
 }
 
 impl Render for BrowserWindow {
-    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, _window: &mut Window, cx: &mut ViewContext<Self>) -> impl IntoElement {
         let tabs: Vec<Tab> = self.tab_manager
             .get_all_tabs()
             .iter()
@@ -188,15 +187,17 @@ impl Render for BrowserWindow {
             .map(|(index, tab)| {
                 let tab_id = tab.id;
                 Tab::new(&tab.title)
-                    .id(("tab", tab_id))
+                    .id(format!("tab-{}", tab_id))
                     .when(tab.is_loading, |this| this.prefix(Icon::new(IconName::Loader)))
                     .suffix(
-                        gpui_component::button::Button::new(("close-tab", tab_id))
-                            .icon(IconName::Close)
-                            .ghost()
-                            .xsmall()
-                            .on_click(cx.listener(move |this: &mut BrowserWindow, _, _, window, cx| {
-                                this.close_tab_by_id(tab_id, window, cx);
+                        div()
+                            .child(Icon::new(IconName::Close).small())
+                            .cursor_pointer()
+                            .p_1()
+                            .rounded_sm()
+                            .hover(|style| style.bg(cx.theme().ghost_element_hover))
+                            .on_mouse_down(gpui::MouseButton::Left, cx.listener(move |this: &mut BrowserWindow, _, _, cx| {
+                                this.close_tab_by_id(tab_id, cx);
                             }))
                     )
             })
