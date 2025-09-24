@@ -1,7 +1,7 @@
 /// Web browser component for PrismaUI
 use gpui::{
-    div, Context, Entity, EventEmitter, FocusHandle, Focusable,
-    IntoElement, Render, Window, EntityInputHandler
+    div, AppContext, Context, Entity, EventEmitter, FocusHandle, Focusable,
+    IntoElement, Render, Styled, Window, EntityInputHandler
 };
 use gpui::prelude::FluentBuilder;
 use gpui_component::{
@@ -148,8 +148,22 @@ impl Browser {
     fn create_new_tab(&mut self, url: &str, window: &mut Window, cx: &mut Context<Self>) {
         let webview = WebView::new(url, window, cx);
 
-        // Subscribe to webview events
-        cx.subscribe(&webview, Self::on_webview_event).detach();
+        // Subscribe to webview events individually
+        cx.subscribe(&webview, |this: &mut Browser, webview, event: &AddressChangedEvent, cx| {
+            this.on_address_changed(webview, event, cx);
+        }).detach();
+
+        cx.subscribe(&webview, |this: &mut Browser, webview, event: &TitleChangedEvent, cx| {
+            this.on_title_changed(webview, event, cx);
+        }).detach();
+
+        cx.subscribe(&webview, |this: &mut Browser, webview, event: &LoadStartEvent, cx| {
+            this.on_load_start(webview, event, cx);
+        }).detach();
+
+        cx.subscribe(&webview, |this: &mut Browser, webview, event: &LoadEndEvent, cx| {
+            this.on_load_end(webview, event, cx);
+        }).detach();
 
         let tab_id = self.tab_manager.create_tab(url.to_string(), webview);
 
@@ -161,34 +175,63 @@ impl Browser {
         cx.notify();
     }
 
-    fn on_webview_event(
+    fn on_address_changed(
         &mut self,
         webview: Entity<WebView>,
-        event: &dyn std::any::Any,
+        event: &AddressChangedEvent,
         cx: &mut Context<Self>,
     ) {
-        // Find the tab that owns this webview
-        let tab_id = self.tab_manager.get_all_tabs()
-            .iter()
-            .find(|tab| tab.webview == webview)
-            .map(|tab| tab.id);
-
+        let tab_id = self.find_tab_by_webview(webview);
         if let Some(tab_id) = tab_id {
-            if let Some(event) = event.downcast_ref::<AddressChangedEvent>() {
-                self.tab_manager.update_tab_url(tab_id, event.url.clone());
-                if Some(tab_id) == self.tab_manager.get_active_tab_id() {
-                    // We'll update URL in the render cycle
-                    // self.update_url_input(&event.url, window, cx);
-                }
-            } else if let Some(event) = event.downcast_ref::<TitleChangedEvent>() {
-                self.tab_manager.update_tab_title(tab_id, event.title.clone());
-            } else if let Some(_) = event.downcast_ref::<LoadStartEvent>() {
-                self.tab_manager.set_tab_loading(tab_id, true);
-            } else if let Some(_) = event.downcast_ref::<LoadEndEvent>() {
-                self.tab_manager.set_tab_loading(tab_id, false);
-            }
+            self.tab_manager.update_tab_url(tab_id, event.url.clone());
             cx.notify();
         }
+    }
+
+    fn on_title_changed(
+        &mut self,
+        webview: Entity<WebView>,
+        event: &TitleChangedEvent,
+        cx: &mut Context<Self>,
+    ) {
+        let tab_id = self.find_tab_by_webview(webview);
+        if let Some(tab_id) = tab_id {
+            self.tab_manager.update_tab_title(tab_id, event.title.clone());
+            cx.notify();
+        }
+    }
+
+    fn on_load_start(
+        &mut self,
+        webview: Entity<WebView>,
+        _event: &LoadStartEvent,
+        cx: &mut Context<Self>,
+    ) {
+        let tab_id = self.find_tab_by_webview(webview);
+        if let Some(tab_id) = tab_id {
+            self.tab_manager.set_tab_loading(tab_id, true);
+            cx.notify();
+        }
+    }
+
+    fn on_load_end(
+        &mut self,
+        webview: Entity<WebView>,
+        _event: &LoadEndEvent,
+        cx: &mut Context<Self>,
+    ) {
+        let tab_id = self.find_tab_by_webview(webview);
+        if let Some(tab_id) = tab_id {
+            self.tab_manager.set_tab_loading(tab_id, false);
+            cx.notify();
+        }
+    }
+
+    fn find_tab_by_webview(&self, webview: Entity<WebView>) -> Option<usize> {
+        self.tab_manager.get_all_tabs()
+            .iter()
+            .find(|tab| tab.webview == webview)
+            .map(|tab| tab.id)
     }
 
     fn update_url_input(&mut self, url: &str, window: &mut Window, cx: &mut Context<Self>) {
@@ -239,17 +282,14 @@ impl Browser {
         }
     }
 
-    fn create_new_tab_action(&mut self, cx: &mut Context<Self>) {
-        self.create_new_tab("https://www.google.com", cx.window_mut(), cx);
+    fn create_new_tab_action(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.create_new_tab("https://www.google.com", window, cx);
     }
 
     fn close_tab_by_id(&mut self, tab_id: usize, cx: &mut Context<Self>) {
         self.tab_manager.close_tab(tab_id);
 
-        // Update URL input for new active tab
-        if let Some(tab) = self.tab_manager.get_active_tab() {
-            self.update_url_input(&tab.url, cx.window_mut(), cx);
-        }
+        // URL will be updated in render cycle
 
         cx.notify();
     }
@@ -263,6 +303,15 @@ impl Focusable for Browser {
 
 impl Render for Browser {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        // Update URL input with active tab's URL
+        if let Some(active_tab) = self.tab_manager.get_active_tab() {
+            self.url_input.update(cx, |input, cx| {
+                let current_value = input.value();
+                if current_value != active_tab.url {
+                    input.replace_text_in_range(None, &active_tab.url, window, cx);
+                }
+            });
+        }
         let tabs: Vec<Tab> = self.tab_manager
             .get_all_tabs()
             .iter()
