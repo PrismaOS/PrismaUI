@@ -278,7 +278,7 @@ impl Render for Browser {
                             .icon(IconName::Close)
                             .ghost()
                             .xsmall()
-                            .on_click(cx.listener(move |this: &mut Browser, _, cx| {
+                            .on_click(cx.listener(move |this: &mut Browser, _, _, cx| {
                                 this.close_tab_by_id(tab_id, cx);
                             }))
                     )
