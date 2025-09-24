@@ -10,10 +10,7 @@
       "Bash(timeout 8s cargo run -p prisma_ui)",
       "Bash(timeout 5s cargo run -p prisma_ui)",
       "Bash(cp:*)",
-      "Read(//c/Users/redst/Pictures/Screenshots 1/**)",
-      "Read(//c/Users/redst/.cef/Release/**)",
-      "Bash(curl:*)",
-      "Bash(tar:*)"
+      "Read(//c/Users/redst/Pictures/Screenshots 1/**)"
     ],
     "deny": [],
     "ask": []
