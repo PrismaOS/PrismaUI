@@ -6,7 +6,7 @@ use gpui::{
 use gpui_component::{
     tab::{TabBar, Tab},
     input::{TextInput, InputState},
-    button::{Button, ButtonVariants as _},
+    button::Button,
     Icon, IconName, Size, Sizable,
     h_flex, v_flex, ActiveTheme
 };
@@ -30,7 +30,7 @@ impl BrowserWindow {
 
         let mut browser = Self {
             tab_manager: TabManager::new(),
-            url_input: url_input.clone(),
+            url_input,
             focus_handle,
             style: StyleRefinement::default(),
         };
@@ -222,10 +222,17 @@ impl Render for BrowserWindow {
                             .selected_index(active_tab_index)
                             .on_click(cx.listener(Self::on_tab_click))
                             .suffix(
-                                Button::new("new-tab")
-                                    .ghost()
-                                    .icon(IconName::Plus)
-                                    .on_click(cx.listener(Self::create_new_tab_action))
+                                h_flex()
+                                    .gap_2()
+                                    .child(
+                                        div()
+                                            .cursor_pointer()
+                                            .p_1()
+                                            .rounded_md()
+                                            .hover(|style| style.bg(cx.theme().ghost_element_hover))
+                                            .child("+ New Tab")
+                                            .on_mouse_down(gpui::MouseButton::Left, cx.listener(Self::create_new_tab_action))
+                                    )
                             )
                     )
                     .child(
