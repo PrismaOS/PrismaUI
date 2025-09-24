@@ -1,7 +1,7 @@
 /// Web browser component for PrismaUI
 use gpui::{
     div, AppContext, Context, Entity, EventEmitter, FocusHandle, Focusable,
-    IntoElement, Render, Styled, Window, EntityInputHandler
+    IntoElement, ParentElement, Render, Styled, Window, EntityInputHandler
 };
 use gpui::prelude::FluentBuilder;
 use gpui_component::{
@@ -132,7 +132,7 @@ impl Browser {
 
         let mut browser = Self {
             tab_manager: TabManager::new(),
-            url_input,
+            url_input: url_input.clone(),
             focus_handle,
         };
 
@@ -282,7 +282,7 @@ impl Browser {
         }
     }
 
-    fn create_new_tab_action(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    fn create_new_tab_action(&mut self, _event: &gpui::ClickEvent, window: &mut Window, cx: &mut Context<Self>) {
         self.create_new_tab("https://www.google.com", window, cx);
     }
 
