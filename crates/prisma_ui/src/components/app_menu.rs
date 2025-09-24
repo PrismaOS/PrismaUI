@@ -1,6 +1,6 @@
 /// App menu component - Windows Start Menu / macOS Dock hybrid
 use gpui::{
-    div, px, Action, Context, Entity, EventEmitter, FocusHandle, Focusable,
+    div, img, px, Action, Context, Entity, EventEmitter, FocusHandle, Focusable,
     IntoElement, ParentElement, Render, Styled, Window, AppContext, ElementId, Animation, AnimationExt
 };
 use std::time::Duration;
@@ -541,7 +541,7 @@ impl AppMenu {
                 Button::new("lock")
                     .ghost()
                     .size(px(40.0))
-                    .icon(IconName::User)
+                    .child(img("icons/lock-512.png").w_5().h_5())
                     .tooltip("Lock")
                     .on_click(cx.listener(|this, _, _, cx| {
                         // TODO: Implement lock functionality
@@ -552,7 +552,7 @@ impl AppMenu {
                 Button::new("sleep")
                     .ghost()
                     .size(px(40.0))
-                    .icon(IconName::Moon)
+                    .child(img("icons/moon-4-512.png").w_5().h_5())
                     .tooltip("Sleep")
                     .on_click(cx.listener(|this, _, _, cx| {
                         // TODO: Implement sleep functionality
@@ -563,7 +563,7 @@ impl AppMenu {
                 Button::new("restart")
                     .ghost()
                     .size(px(40.0))
-                    .icon(IconName::Folder)
+                    .child(img("icons/refresh-2-512.png").w_5().h_5())
                     .tooltip("Restart")
                     .on_click(cx.listener(|this, _, _, cx| {
                         // TODO: Implement restart functionality
@@ -574,7 +574,7 @@ impl AppMenu {
                 Button::new("shutdown")
                     .ghost()
                     .size(px(40.0))
-                    .icon(IconName::Settings)
+                    .child(img("icons/power-2-512.png").w_5().h_5())
                     .tooltip("Shutdown")
                     .on_click(cx.listener(|this, _, _, cx| {
                         // TODO: Implement shutdown functionality

@@ -65,8 +65,8 @@ impl TrayIcon {
     /// Render the icon based on its type
     fn render_icon(&self) -> impl IntoElement {
         match &self.icon {
-            TrayIconType::Icon(icon_name) => Icon::new(icon_name.clone()).size_4().into_any_element(),
-            TrayIconType::Image(path) => img(path.clone()).w_4().h_4().into_any_element(),
+            TrayIconType::Icon(icon_name) => Icon::new(icon_name.clone()).size_6().into_any_element(),
+            TrayIconType::Image(path) => img(path.clone()).w_6().h_6().into_any_element(),
         }
     }
 }
@@ -84,28 +84,28 @@ impl Taskbar {
         // Add default system tray icons
         tray_icons.insert("network".to_string(), TrayIcon {
             id: "network".to_string(),
-            icon: TrayIconType::Image("icons/network.png".to_string()),
+            icon: TrayIconType::Image("icons/wifi/wifi-512.png".to_string()),
             tooltip: "Network: Connected".to_string(),
             badge_count: None,
         });
 
         tray_icons.insert("battery".to_string(), TrayIcon {
             id: "battery".to_string(),
-            icon: TrayIconType::Image("icons/battery.png".to_string()),
+            icon: TrayIconType::Image("icons/battery/75-percent-512.png".to_string()),
             tooltip: "Battery: 85%".to_string(),
             badge_count: None,
         });
 
         tray_icons.insert("sound".to_string(), TrayIcon {
             id: "sound".to_string(),
-            icon: TrayIconType::Image("icons/volume.png".to_string()),
+            icon: TrayIconType::Image("icons/speaker.png".to_string()),
             tooltip: "Volume: 70%".to_string(),
             badge_count: None,
         });
 
         tray_icons.insert("notifications".to_string(), TrayIcon {
             id: "notifications".to_string(),
-            icon: TrayIconType::Image("icons/bell.png".to_string()),
+            icon: TrayIconType::Image("icons/inbox.png".to_string()),
             tooltip: "Notifications".to_string(),
             badge_count: Some(3),
         });
