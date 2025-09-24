@@ -393,20 +393,27 @@ impl AppMenu {
     }
 
     fn render_app_grid(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        div()
+        v_flex()
             .flex_1()
             .h_full()
-            .flex()
-            .flex_col()
-            .p_6()
-            .gap_6()
+            .pt_4()
+            .pb_4()
+            .pl_0()
+            .pr_4()
+            .gap_4()
             .child(
                 // Search bar
-                TextInput::new(&self.search_input)
+                div()
                     .w_full()
-                    .h(px(42.0))
-                    .px_4()
-                    .rounded_lg()
+                    .pl_4()
+                    .child(
+                        TextInput::new(&self.search_input)
+                            .w_full()
+                            .max_w(px(400.0))
+                            .h(px(42.0))
+                            .px_4()
+                            .rounded_lg()
+                    )
             )
             .child(
                 // App grid container with proper spacing
@@ -415,16 +422,21 @@ impl AppMenu {
                     .w_full()
                     .overflow_hidden()
                     .scrollable(gpui::Axis::Vertical)
+                    .pl_4()
                     .child(
-                        // Grid layout using CSS Grid approach
+                        // Grid layout - explicitly left aligned
                         div()
                             .w_full()
                             .flex()
                             .flex_row()
                             .flex_wrap()
-                            .gap_6()
+                            .gap_4()
                             .justify_start()
                             .items_start()
+                            .pl_0()
+                            .ml_0()
+                            .pr_0()
+                            .mr_0()
                             .children(self.filtered_apps.iter().enumerate().map(|(idx, app)| {
                                 div()
                                     .w(px(100.0))
@@ -623,8 +635,14 @@ impl Render for AppMenu {
                     .child(
                         h_flex()
                             .flex_1()
+                            .items_start()
                             .child(self.render_category_sidebar(cx))
-                            .child(self.render_app_grid(cx))
+                            .child(
+                                div()
+                                    .flex_1()
+                                    .h_full()
+                                    .child(self.render_app_grid(cx))
+                            )
                     )
                     .child(self.render_power_menu(cx))
             )

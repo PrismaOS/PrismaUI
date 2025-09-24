@@ -1,0 +1,1033 @@
+/// App menu component - Windows Start Menu / macOS Dock hybrid
+use gpui::{
+    div, px, Action, Context, Entity, EventEmitter, FocusHandle, Focusable,
+    IntoElement, InteractiveElement, ParentElement, Render, Styled, Window, AppContext, ElementId, Animation, AnimationExt
+};
+use std::time::Duration;
+use gpui_component::animation::cubic_bezier;
+use gpui::prelude::FluentBuilder;
+use gpui_component::{
+    button::{Button, ButtonVariants as _}, h_flex, input::{InputEvent, InputState, TextInput},
+    v_flex, ActiveTheme, Icon, IconName, StyledExt, Selectable
+};
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+
+/// Application entry in the menu
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct AppEntry {
+    pub id: String,
+    pub name: String,
+    pub description: String,
+    pub icon: IconName,
+    pub executable_path: String,
+    pub category: String,
+    pub pinned: bool,
+    pub recently_used: bool,
+}
+
+/// App menu categories
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum AppCategory {
+    Pinned,
+    RecentlyUsed,
+    Productivity,
+    Development,
+    Games,
+    Multimedia,
+    System,
+    Other,
+}
+
+impl AppCategory {
+    pub fn display_name(&self) -> &'static str {
+        match self {
+            Self::Pinned => "Pinned",
+            Self::RecentlyUsed => "Recently Used",
+            Self::Productivity => "Productivity",
+            Self::Development => "Development",
+            Self::Games => "Games",
+            Self::Multimedia => "Multimedia",
+            Self::System => "System",
+            Self::Other => "Other",
+        }
+    }
+
+    pub fn icon(&self) -> IconName {
+        match self {
+            Self::Pinned => IconName::Star,
+            Self::RecentlyUsed => IconName::Calendar,
+            Self::Productivity => IconName::Building2,
+            Self::Development => IconName::SquareTerminal,
+            Self::Games => IconName::Heart,
+            Self::Multimedia => IconName::Palette,
+            Self::System => IconName::Settings,
+            Self::Other => IconName::FolderOpen,
+        }
+    }
+}
+
+/// Actions for app menu
+#[derive(Action, Clone, PartialEq, Eq, Deserialize)]
+#[action(namespace = app_menu, no_json)]
+pub enum AppMenuAction {
+    ToggleMenu,
+    LaunchApp(String),
+    PinApp(String),
+    UnpinApp(String),
+    Search(String),
+}
+
+/// App menu component - hybrid of Windows Start and macOS Dock
+pub struct AppMenu {
+    /// Whether the menu is currently open
+    open: bool,
+    /// All available applications
+    apps: HashMap<String, AppEntry>,
+    /// Apps organized by category
+    categories: HashMap<AppCategory, Vec<String>>,
+    /// Search input state
+    search_input: Entity<InputState>,
+    /// Filtered apps based on search
+    filtered_apps: Vec<AppEntry>,
+    /// Currently selected category
+    active_category: AppCategory,
+    /// Focus handle
+    focus_handle: FocusHandle,
+}
+
+impl AppMenu {
+    pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
+        let search_input = cx.new(|cx| {
+            InputState::new(window, cx)
+                .placeholder("Search apps...")
+        });
+
+        // Subscribe to search input changes
+        cx.subscribe(&search_input, |this, _, event, cx| {
+            match event {
+                InputEvent::Change => {
+                    let query = this.search_input.read(cx).value();
+                    this.search(&query, cx);
+                }
+                _ => {}
+            }
+        }).detach();
+
+        // Create diverse sample applications for demonstration
+        let mut apps = HashMap::new();
+        let sample_apps = vec![
+            // Development Apps
+            AppEntry {
+                id: "terminal".to_string(),
+                name: "Terminal".to_string(),
+                description: "Advanced command line interface".to_string(),
+                icon: IconName::SquareTerminal,
+                executable_path: "/usr/bin/terminal".to_string(),
+                category: "Development".to_string(),
+                pinned: true,
+                recently_used: true,
+            },
+            AppEntry {
+                id: "code_editor".to_string(),
+                name: "Code Editor".to_string(),
+                description: "Professional IDE for developers".to_string(),
+                icon: IconName::SquareTerminal,
+                executable_path: "/usr/bin/code".to_string(),
+                category: "Development".to_string(),
+                pinned: true,
+                recently_used: true,
+            },
+            AppEntry {
+                id: "git_client".to_string(),
+                name: "Git Client".to_string(),
+                description: "Version control made easy".to_string(),
+                icon: IconName::GitHub,
+                executable_path: "/usr/bin/git-gui".to_string(),
+                category: "Development".to_string(),
+                pinned: false,
+                recently_used: true,
+            },
+            // System Apps
+            AppEntry {
+                id: "file_manager".to_string(),
+                name: "File Explorer".to_string(),
+                description: "Browse and manage your files".to_string(),
+                icon: IconName::Folder,
+                executable_path: "/usr/bin/files".to_string(),
+                category: "System".to_string(),
+                pinned: true,
+                recently_used: false,
+            },
+            AppEntry {
+                id: "system_monitor".to_string(),
+                name: "System Monitor".to_string(),
+                description: "Monitor system performance".to_string(),
+                icon: IconName::LayoutDashboard,
+                executable_path: "/usr/bin/monitor".to_string(),
+                category: "System".to_string(),
+                pinned: false,
+                recently_used: false,
+            },
+            AppEntry {
+                id: "settings".to_string(),
+                name: "System Settings".to_string(),
+                description: "Configure system preferences".to_string(),
+                icon: IconName::Settings,
+                executable_path: "/usr/bin/settings".to_string(),
+                category: "System".to_string(),
+                pinned: false,
+                recently_used: false,
+            },
+            // Productivity Apps
+            AppEntry {
+                id: "web_browser".to_string(),
+                name: "Web Browser".to_string(),
+                description: "Browse the internet securely".to_string(),
+                icon: IconName::Globe,
+                executable_path: "/usr/bin/browser".to_string(),
+                category: "Productivity".to_string(),
+                pinned: false,
+                recently_used: true,
+            },
+            AppEntry {
+                id: "calculator".to_string(),
+                name: "Calculator".to_string(),
+                description: "Scientific calculator".to_string(),
+                icon: IconName::Plus,
+                executable_path: "/usr/bin/calc".to_string(),
+                category: "Productivity".to_string(),
+                pinned: false,
+                recently_used: false,
+            },
+            AppEntry {
+                id: "notes".to_string(),
+                name: "Notes".to_string(),
+                description: "Take notes and organize ideas".to_string(),
+                icon: IconName::BookOpen,
+                executable_path: "/usr/bin/notes".to_string(),
+                category: "Productivity".to_string(),
+                pinned: false,
+                recently_used: true,
+            },
+            // Multimedia Apps
+            AppEntry {
+                id: "media_player".to_string(),
+                name: "Media Player".to_string(),
+                description: "Play videos and music".to_string(),
+                icon: IconName::Palette,
+                executable_path: "/usr/bin/player".to_string(),
+                category: "Multimedia".to_string(),
+                pinned: false,
+                recently_used: false,
+            },
+            AppEntry {
+                id: "image_viewer".to_string(),
+                name: "Image Viewer".to_string(),
+                description: "View and edit images".to_string(),
+                icon: IconName::Eye,
+                executable_path: "/usr/bin/images".to_string(),
+                category: "Multimedia".to_string(),
+                pinned: false,
+                recently_used: false,
+            },
+            // Games
+            AppEntry {
+                id: "solitaire".to_string(),
+                name: "Solitaire".to_string(),
+                description: "Classic card game".to_string(),
+                icon: IconName::Heart,
+                executable_path: "/usr/bin/solitaire".to_string(),
+                category: "Games".to_string(),
+                pinned: false,
+                recently_used: false,
+            },
+        ];
+
+        for app in sample_apps {
+            apps.insert(app.id.clone(), app);
+        }
+
+        let mut this = Self {
+            open: false,
+            apps,
+            categories: HashMap::new(),
+            search_input,
+            filtered_apps: Vec::new(),
+            active_category: AppCategory::Pinned,
+            focus_handle: cx.focus_handle(),
+        };
+
+        this.organize_categories();
+        this.update_filtered_apps("", AppCategory::Pinned);
+        this
+    }
+
+    /// Create app menu entity
+    pub fn create(window: &mut Window, cx: &mut gpui::App) -> Entity<Self> {
+        cx.new(|cx| Self::new(window, cx))
+    }
+
+    /// Toggle menu open/closed state
+    pub fn toggle(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.open = !self.open;
+        if self.open {
+            cx.focus_view(&self.search_input, window);
+        }
+        cx.notify();
+    }
+
+    /// Close the menu
+    pub fn close(&mut self, cx: &mut Context<Self>) {
+        self.open = false;
+        cx.notify();
+    }
+
+    /// Launch an application
+    pub fn launch_app(&mut self, app_id: &str, window: &mut Window, cx: &mut Context<Self>) {
+        if let Some(app) = self.apps.get_mut(app_id) {
+            // Mark as recently used
+            app.recently_used = true;
+
+            // Emit event to desktop to create the application window
+            cx.emit(AppMenuAction::LaunchApp(app_id.to_string()));
+
+            tracing::info!("Launching app: {} ({})", app.name, app.executable_path);
+
+            // Close menu after launching
+            self.close(cx);
+            self.organize_categories();
+        }
+    }
+
+    /// Pin/unpin an application
+    pub fn toggle_pin(&mut self, app_id: &str, cx: &mut Context<Self>) {
+        if let Some(app) = self.apps.get_mut(app_id) {
+            app.pinned = !app.pinned;
+            self.organize_categories();
+            self.update_filtered_apps("", self.active_category.clone());
+            cx.notify();
+        }
+    }
+
+    /// Update search filter
+    pub fn search(&mut self, query: &str, cx: &mut Context<Self>) {
+        self.update_filtered_apps(query, self.active_category.clone());
+        cx.notify();
+    }
+
+    /// Switch active category
+    pub fn set_category(&mut self, category: AppCategory, cx: &mut Context<Self>) {
+        self.active_category = category;
+        self.update_filtered_apps("", self.active_category.clone());
+        cx.notify();
+    }
+
+    /// Organize apps into categories
+    fn organize_categories(&mut self) {
+        self.categories.clear();
+
+        for app in self.apps.values() {
+            // Add to pinned if pinned
+            if app.pinned {
+                self.categories
+                    .entry(AppCategory::Pinned)
+                    .or_insert_with(Vec::new)
+                    .push(app.id.clone());
+            }
+
+            // Add to recently used if recently used
+            if app.recently_used {
+                self.categories
+                    .entry(AppCategory::RecentlyUsed)
+                    .or_insert_with(Vec::new)
+                    .push(app.id.clone());
+            }
+
+            // Add to appropriate category
+            let category = match app.category.as_str() {
+                "Development" => AppCategory::Development,
+                "Productivity" => AppCategory::Productivity,
+                "Games" => AppCategory::Games,
+                "Multimedia" => AppCategory::Multimedia,
+                "System" => AppCategory::System,
+                _ => AppCategory::Other,
+            };
+
+            self.categories
+                .entry(category)
+                .or_insert_with(Vec::new)
+                .push(app.id.clone());
+        }
+    }
+
+    /// Update filtered apps based on search query and category
+    fn update_filtered_apps(&mut self, query: &str, category: AppCategory) {
+        let query = query.to_lowercase();
+
+        let app_ids = self.categories.get(&category).cloned().unwrap_or_default();
+
+        self.filtered_apps = app_ids
+            .into_iter()
+            .filter_map(|id| self.apps.get(&id))
+            .filter(|app| {
+                query.is_empty() ||
+                app.name.to_lowercase().contains(&query) ||
+                app.description.to_lowercase().contains(&query)
+            })
+            .cloned()
+            .collect();
+    }
+
+    fn render_category_sidebar(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        let categories = [
+            AppCategory::Pinned,
+            AppCategory::RecentlyUsed,
+            AppCategory::Development,
+            AppCategory::Productivity,
+            AppCategory::Games,
+            AppCategory::Multimedia,
+            AppCategory::System,
+            AppCategory::Other,
+        ];
+
+        v_flex()
+            .w(px(240.0))
+            .h_full()
+            .bg(cx.theme().sidebar.opacity(0.95))
+            .border_r_1()
+            .border_color(cx.theme().border.opacity(0.3))
+            .p_3()
+            .gap_2()
+            .scrollable(gpui::Axis::Vertical)
+            .child(
+                // Category Header
+                div()
+                    .px_3()
+                    .py_2()
+                    .text_xs()
+                    .font_semibold()
+                    .text_color(cx.theme().muted_foreground.opacity(0.8))
+                    .child("Categories")
+            )
+            .children(categories.iter().cloned().enumerate().map(|(idx, category)| {
+                let is_active = category == self.active_category;
+                let count = self.categories.get(&category).map_or(0, |apps| apps.len());
+
+                Button::new(("category", idx))
+                    .w_full()
+                    .ghost()
+                    .justify_start()
+                    .px_4()
+                    .py_3()
+                    .rounded_lg()
+                    .when(is_active, |btn| {
+                        btn.selected(true)
+                            .bg(cx.theme().primary.opacity(0.12))
+                            .border_1()
+                            .border_color(cx.theme().primary.opacity(0.25))
+                    })
+                    .when(!is_active, |btn| {
+                        btn.bg(cx.theme().transparent)
+                    })
+                    .child(
+                        h_flex()
+                            .w_full()
+                            .items_center()
+                            .justify_between()
+                            .child(
+                                h_flex()
+                                    .items_center()
+                                    .gap_3()
+                                    .child(
+                                        div()
+                                            .flex()
+                                            .items_center()
+                                            .justify_center()
+                                            .size(px(24.0))
+                                            .rounded_md()
+                                            .when(is_active, |this| {
+                                                this.bg(cx.theme().primary.opacity(0.15))
+                                            })
+                                            .child(
+                                                Icon::new(category.icon())
+                                                    .size_4()
+                                                    .text_color(
+                                                        if is_active {
+                                                            cx.theme().primary
+                                                        } else {
+                                                            cx.theme().muted_foreground
+                                                        }
+                                                    )
+                                            )
+                                    )
+                                    .child(
+                                        div()
+                                            .text_sm()
+                                            .font_medium()
+                                            .text_color(
+                                                if is_active {
+                                                    cx.theme().foreground
+                                                } else {
+                                                    cx.theme().muted_foreground
+                                                }
+                                            )
+                                            .child(category.display_name().to_string())
+                                    )
+                            )
+                            .when(count > 0, |this| {
+                                this.child(
+                                    div()
+                                        .bg(if is_active {
+                                            cx.theme().primary
+                                        } else {
+                                            cx.theme().muted.opacity(0.8)
+                                        })
+                                        .text_color(if is_active {
+                                            cx.theme().primary_foreground
+                                        } else {
+                                            cx.theme().muted_foreground
+                                        })
+                                        .px_2()
+                                        .py_1()
+                                        .rounded_full()
+                                        .text_xs()
+                                        .font_semibold()
+                                        .min_w(px(22.0))
+                                        .h(px(18.0))
+                                        .flex()
+                                        .items_center()
+                                        .justify_center()
+                                        .child(count.to_string())
+                                )
+                            })
+                    )
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        this.set_category(category, cx);
+                    }))
+            }))
+    }
+
+    fn render_app_grid(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        div()
+            .flex_1()
+            .h_full()
+            .flex()
+            .flex_col()
+            .bg(cx.theme().background.opacity(0.98))
+            .child(
+                // Header with search and category title
+                div()
+                    .w_full()
+                    .px_6()
+                    .py_4()
+                    .border_b_1()
+                    .border_color(cx.theme().border.opacity(0.1))
+                    .child(
+                        v_flex()
+                            .gap_4()
+                            .child(
+                                h_flex()
+                                    .items_center()
+                                    .justify_between()
+                                    .child(
+                                        div()
+                                            .text_xl()
+                                            .font_bold()
+                                            .text_color(cx.theme().foreground)
+                                            .child(self.active_category.display_name())
+                                    )
+                                    .child(
+                                        div()
+                                            .text_sm()
+                                            .text_color(cx.theme().muted_foreground)
+                                            .child(format!("{} apps", self.filtered_apps.len()))
+                                    )
+                            )
+                            .child(
+                                // Enhanced search bar
+                                div()
+                                    .relative()
+                                    .w_full()
+                                    .max_w(px(400.0))
+                                    .child(
+                                        TextInput::new(&self.search_input)
+                                            .w_full()
+                                            .h(px(44.0))
+                                            .pl(px(44.0))
+                                            .pr_4()
+                                            .rounded_xl()
+                                            .bg(cx.theme().muted.opacity(0.6))
+                                            .border_1()
+                                            .border_color(cx.theme().border.opacity(0.5))
+                                    )
+                                    .child(
+                                        div()
+                                            .absolute()
+                                            .left_3()
+                                            .top(px(10.0))
+                                            .child(
+                                                Icon::new(IconName::Search)
+                                                    .size_5()
+                                                    .text_color(cx.theme().muted_foreground.opacity(0.7))
+                                            )
+                                    )
+                            )
+                    )
+            )
+            .child(
+                // App grid container with proper alignment
+                div()
+                    .flex_1()
+                    .w_full()
+                    .overflow_hidden()
+                    .scrollable(gpui::Axis::Vertical)
+                    .px_6()
+                    .py_4()
+                    .child(
+                        // Simple left-aligned grid layout
+                        v_flex()
+                            .w_full()
+                            .gap_4()
+                            .children((0..((self.filtered_apps.len() + 5) / 6)).map(|row| {
+                                h_flex()
+                                    .w_full()
+                                    .gap_4()
+                                    .items_start()
+                                    .children((0..6).filter_map(|col| {
+                                        let idx = row * 6 + col;
+                                        self.filtered_apps.get(idx).map(|app| (idx, app))
+                                    }).map(|(idx, app)| {
+                                        div()
+                                            .relative()
+                                            .w(px(90.0))
+                                            .h(px(110.0))
+                                            .flex()
+                                            .flex_col()
+                                            .items_center()
+                                            .gap_2()
+                                            .child(
+                                                Button::new(("app", idx))
+                                                    .ghost()
+                                                    .p_0()
+                                                    .rounded_2xl()
+                                                    .w(px(70.0))
+                                                    .h(px(70.0))
+                                                    .flex()
+                                                    .items_center()
+                                                    .justify_center()
+                                                    .bg(cx.theme().transparent)
+                                                    .on_click({
+                                                        let app_id = app.id.clone();
+                                                        cx.listener(move |this, _, window, cx| {
+                                                            this.launch_app(&app_id, window, cx);
+                                                        })
+                                                    })
+                                                    .child(
+                                                        div()
+                                                            .w(px(56.0))
+                                                            .h(px(56.0))
+                                                            .flex()
+                                                            .items_center()
+                                                            .justify_center()
+                                                            .bg(cx.theme().primary.opacity(0.12))
+                                                            .text_color(cx.theme().primary)
+                                                            .rounded_xl()
+                                                            .shadow_sm()
+                                                            .border_1()
+                                                            .border_color(cx.theme().primary.opacity(0.2))
+                                                            .child(Icon::new(app.icon.clone()).size(px(24.0)))
+                                                    )
+                                            )
+                                            .child(
+                                                div()
+                                                    .w_full()
+                                                    .text_xs()
+                                                    .font_medium()
+                                                    .text_center()
+                                                    .text_color(cx.theme().foreground)
+                                                    .line_clamp(2)
+                                                    .px_1()
+                                                    .child(app.name.clone())
+                                            )
+                                            .when(app.pinned, |this| {
+                                                this.child(
+                                                    div()
+                                                        .absolute()
+                                                        .top(px(-2.0))
+                                                        .right(px(-2.0))
+                                                        .size(px(14.0))
+                                                        .bg(cx.theme().warning)
+                                                        .rounded_full()
+                                                        .flex()
+                                                        .items_center()
+                                                        .justify_center()
+                                                        .shadow_sm()
+                                                        .child(
+                                                            Icon::new(IconName::Star)
+                                                                .size(px(8.0))
+                                                                .text_color(cx.theme().primary_foreground)
+                                                        )
+                                                )
+                                            })
+                                    }))
+                            }))
+                                div()
+                                    .relative()
+                                    .w(px(100.0))
+                                    .h(px(120.0))
+                                    .flex()
+                                    .flex_col()
+                                    .items_center()
+                                    .gap_2()
+                                    .child(
+                                        Button::new(("app", idx))
+                                            .ghost()
+                                            .p_0()
+                                            .rounded_2xl()
+                                            .w(px(80.0))
+                                            .h(px(80.0))
+                                            .flex()
+                                            .items_center()
+                                            .justify_center()
+                                            .bg(cx.theme().transparent)
+                                            .on_click({
+                                                let app_id = app.id.clone();
+                                                cx.listener(move |this, _, window, cx| {
+                                                    this.launch_app(&app_id, window, cx);
+                                                })
+                                            })
+                                            .child(
+                                                div()
+                                                    .w(px(64.0))
+                                                    .h(px(64.0))
+                                                    .flex()
+                                                    .items_center()
+                                                    .justify_center()
+                                                    .bg(cx.theme().primary.opacity(0.12))
+                                                    .text_color(cx.theme().primary)
+                                                    .rounded_xl()
+                                                    .shadow_sm()
+                                                    .border_1()
+                                                    .border_color(cx.theme().primary.opacity(0.2))
+                                                    .child(Icon::new(app.icon.clone()).size(px(28.0)))
+                                            )
+                                    )
+                                    .child(
+                                        div()
+                                            .w_full()
+                                            .text_xs()
+                                            .font_medium()
+                                            .text_center()
+                                            .text_color(cx.theme().foreground)
+                                            .line_clamp(2)
+                                            .px_1()
+                                            .child(app.name.clone())
+                                    )
+                                    .when(app.pinned, |this| {
+                                        this.child(
+                                            div()
+                                                .absolute()
+                                                .top(px(-2.0))
+                                                .right(px(-2.0))
+                                                .size(px(14.0))
+                                                .bg(cx.theme().warning)
+                                                .rounded_full()
+                                                .flex()
+                                                .items_center()
+                                                .justify_center()
+                                                .shadow_sm()
+                                                .child(
+                                                    Icon::new(IconName::Star)
+                                                        .size(px(8.0))
+                                                        .text_color(cx.theme().primary_foreground)
+                                                )
+                                        )
+                                    })
+                            }))
+                    )
+            )
+    }
+
+    fn render_user_section(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        div()
+            .w_full()
+            .bg(cx.theme().background.opacity(0.95))
+            .border_b_1()
+            .border_color(cx.theme().border.opacity(0.2))
+            .px_6()
+            .py_4()
+            .child(
+                h_flex()
+                    .w_full()
+                    .items_center()
+                    .gap_4()
+                    .child(
+                        // Enhanced user avatar with gradient background
+                        div()
+                            .relative()
+                            .child(
+                                div()
+                                    .size(px(52.0))
+                                    .rounded_full()
+                                    .bg(cx.theme().primary)
+                                    .shadow_lg()
+                                    .border_2()
+                                    .border_color(cx.theme().background)
+                                    .flex()
+                                    .items_center()
+                                    .justify_center()
+                                    .child(
+                                        Icon::new(IconName::User)
+                                            .size(px(24.0))
+                                            .text_color(cx.theme().primary_foreground)
+                                    )
+                            )
+                            .child(
+                                // Online status indicator
+                                div()
+                                    .absolute()
+                                    .bottom(px(-2.0))
+                                    .right(px(-2.0))
+                                    .size(px(16.0))
+                                    .rounded_full()
+                                    .bg(cx.theme().success)
+                                    .border_3()
+                                    .border_color(cx.theme().background)
+                                    .shadow_md()
+                            )
+                    )
+                    .child(
+                        v_flex()
+                            .flex_1()
+                            .gap_1()
+                            .child(
+                                h_flex()
+                                    .items_center()
+                                    .gap_2()
+                                    .child(
+                                        div()
+                                            .text_base()
+                                            .font_bold()
+                                            .text_color(cx.theme().foreground)
+                                            .child("PrismaUI User")
+                                    )
+                            )
+                            .child(
+                                div()
+                                    .text_sm()
+                                    .text_color(cx.theme().muted_foreground.opacity(0.9))
+                                    .child("user@prismaui.dev")
+                            )
+                    )
+                    .child(
+                        h_flex()
+                            .gap_2()
+                            .child(
+                                Button::new("notifications")
+                                    .ghost()
+                                    .size(px(36.0))
+                                    .rounded_lg()
+                                    .child(
+                                        div()
+                                            .relative()
+                                            .child(Icon::new(IconName::Info).size_4())
+                                            .child(
+                                                // Notification badge
+                                                div()
+                                                    .absolute()
+                                                    .top(px(-4.0))
+                                                    .right(px(-4.0))
+                                                    .size(px(8.0))
+                                                    .rounded_full()
+                                                    .bg(cx.theme().danger)
+                                                    .shadow_sm()
+                                            )
+                                    )
+                                    .tooltip("Notifications")
+                            )
+                            .child(
+                                Button::new("user-settings")
+                                    .ghost()
+                                    .size(px(36.0))
+                                    .rounded_lg()
+                                    .child(Icon::new(IconName::Settings).size_4())
+                                    .tooltip("Settings")
+                            )
+                    )
+            )
+    }
+
+    fn render_power_menu(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        div()
+            .w_full()
+            .bg(cx.theme().background.opacity(0.95))
+            .border_t_1()
+            .border_color(cx.theme().border.opacity(0.2))
+            .px_6()
+            .py_4()
+            .child(
+                h_flex()
+                    .w_full()
+                    .items_center()
+                    .justify_between()
+                    .child(
+                        // Quick actions section
+                        h_flex()
+                            .gap_3()
+                            .child(
+                                Button::new("quick-settings")
+                                    .ghost()
+                                    .px_4()
+                                    .py_2()
+                                    .rounded_lg()
+                                    .text_sm()
+                                    .font_medium()
+                                    .text_color(cx.theme().muted_foreground)
+                                    .bg(cx.theme().transparent)
+                                    .child(
+                                        h_flex()
+                                            .items_center()
+                                            .gap_2()
+                                            .child(Icon::new(IconName::Settings2).size_4())
+                                            .child("Quick Settings")
+                                    )
+                            )
+                            .child(
+                                Button::new("all-apps")
+                                    .ghost()
+                                    .px_4()
+                                    .py_2()
+                                    .rounded_lg()
+                                    .text_sm()
+                                    .font_medium()
+                                    .text_color(cx.theme().muted_foreground)
+                                    .bg(cx.theme().transparent)
+                                    .child(
+                                        h_flex()
+                                            .items_center()
+                                            .gap_2()
+                                            .child(Icon::new(IconName::LayoutDashboard).size_4())
+                                            .child("All Apps")
+                                    )
+                            )
+                    )
+                    .child(
+                        // Power controls
+                        h_flex()
+                            .gap_2()
+                            .child(
+                                Button::new("lock")
+                                    .ghost()
+                                    .size(px(44.0))
+                                    .rounded_lg()
+                                    .bg(cx.theme().transparent)
+                                    .child(Icon::new(IconName::CircleUser).size_5())
+                                    .tooltip("Lock Screen")
+                                    .on_click(cx.listener(|this, _, _, cx| {
+                                        this.close(cx);
+                                    }))
+                            )
+                            .child(
+                                Button::new("sleep")
+                                    .ghost()
+                                    .size(px(44.0))
+                                    .rounded_lg()
+                                    .bg(cx.theme().transparent)
+                                    .child(Icon::new(IconName::Moon).size_5())
+                                    .tooltip("Sleep")
+                                    .on_click(cx.listener(|this, _, _, cx| {
+                                        this.close(cx);
+                                    }))
+                            )
+                            .child(
+                                Button::new("restart")
+                                    .ghost()
+                                    .size(px(44.0))
+                                    .rounded_lg()
+                                    .bg(cx.theme().transparent)
+                                    .child(Icon::new(IconName::Replace).size_5())
+                                    .tooltip("Restart")
+                                    .on_click(cx.listener(|this, _, _, cx| {
+                                        this.close(cx);
+                                    }))
+                            )
+                            .child(
+                                div()
+                                    .w(px(1.0))
+                                    .h(px(24.0))
+                                    .bg(cx.theme().border.opacity(0.3))
+                                    .mx_2()
+                            )
+                            .child(
+                                Button::new("shutdown")
+                                    .ghost()
+                                    .size(px(44.0))
+                                    .rounded_lg()
+                                    .bg(cx.theme().transparent)
+                                    .child(Icon::new(IconName::CircleX).size_5().text_color(cx.theme().danger))
+                                    .tooltip("Shut Down")
+                                    .on_click(cx.listener(|this, _, _, cx| {
+                                        this.close(cx);
+                                    }))
+                            )
+                    )
+            )
+    }
+}
+
+impl EventEmitter<AppMenuAction> for AppMenu {}
+
+impl Focusable for AppMenu {
+    fn focus_handle(&self, _: &gpui::App) -> FocusHandle {
+        self.focus_handle.clone()
+    }
+}
+
+impl Render for AppMenu {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        if !self.open {
+            return div().into_any_element(); // Hidden when closed
+        }
+
+        // Production-ready modern app menu
+        div()
+            .absolute()
+            .bottom(px(72.0)) // Above taskbar with better spacing
+            .left(px(16.0)) // Left aligned with proper margin
+            .w(px(900.0)) // Optimal width for professional layout
+            .h(px(780.0)) // Taller for enhanced sections
+            .bg(cx.theme().background.opacity(0.98))
+            .border_1()
+            .border_color(cx.theme().border.opacity(0.3))
+            .rounded_2xl()
+            .shadow_2xl()
+            .overflow_hidden()
+            .child(
+                v_flex()
+                    .size_full()
+                    .child(self.render_user_section(cx))
+                    .child(
+                        h_flex()
+                            .flex_1()
+                            .min_h_0() // Ensures proper flex behavior
+                            .child(self.render_category_sidebar(cx))
+                            .child(self.render_app_grid(cx))
+                    )
+                    .child(self.render_power_menu(cx))
+            )
+            .with_animation(
+                ElementId::Name("start-menu-open".into()),
+                Animation::new(Duration::from_secs_f64(0.25))
+                    .with_easing(cubic_bezier(0.32, 0.72, 0., 1.)),
+                move |this, delta| {
+                    // Slide up from bottom and fade in
+                    let y_offset = px(30.) * (1. - delta);
+                    let opacity = 0.5 + (0.5 * delta);
+                    this.bottom(px(56.0) - y_offset)
+                        .opacity(opacity)
+                }
+            )
+            .into_any_element()
+    }
+}
