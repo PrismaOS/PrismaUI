@@ -47,22 +47,8 @@ impl BrowserWindow {
     fn create_new_tab(&mut self, url: &str, window: &mut Window, cx: &mut Context<Self>) {
         let webview = WebView::new(url, window, cx);
 
-        // Subscribe to webview events individually
-        cx.subscribe(&webview, |this: &mut BrowserWindow, webview, event: &AddressChangedEvent, cx| {
-            this.on_address_changed(webview, event, cx);
-        }).detach();
-
-        cx.subscribe(&webview, |this: &mut BrowserWindow, webview, event: &TitleChangedEvent, cx| {
-            this.on_title_changed(webview, event, cx);
-        }).detach();
-
-        cx.subscribe(&webview, |this: &mut BrowserWindow, webview, event: &LoadStartEvent, cx| {
-            this.on_load_start(webview, event, cx);
-        }).detach();
-
-        cx.subscribe(&webview, |this: &mut BrowserWindow, webview, event: &LoadEndEvent, cx| {
-            this.on_load_end(webview, event, cx);
-        }).detach();
+        // Subscribe to webview events
+        cx.subscribe(&webview, Self::on_webview_event).detach();
 
         let tab_id = self.tab_manager.create_tab(url.to_string(), webview);
 
