@@ -209,6 +209,134 @@ pub trait StyledExt: Styled + Sized {
 
 impl<E: Styled> StyledExt for E {}
 
+/// Acrylic intensity levels
+#[derive(Clone, Copy, Debug)]
+pub enum AcrylicIntensity {
+    Light,      // 85% opacity
+    Medium,     // 75% opacity
+    Strong,     // 65% opacity
+    Intense,    // 55% opacity
+}
+
+impl AcrylicIntensity {
+    pub fn opacity(&self) -> f32 {
+        match self {
+            Self::Light => 0.85,
+            Self::Medium => 0.75,
+            Self::Strong => 0.65,
+            Self::Intense => 0.55,
+        }
+    }
+
+    pub fn border_opacity(&self) -> f32 {
+        match self {
+            Self::Light => 0.2,
+            Self::Medium => 0.3,
+            Self::Strong => 0.4,
+            Self::Intense => 0.5,
+        }
+    }
+}
+
+/// Acrylic material tint colors
+#[derive(Clone, Copy, Debug)]
+pub enum AcrylicTint {
+    /// System background with dynamic opacity
+    System,
+    /// Dark tint for overlays
+    Dark,
+    /// Light tint for panels
+    Light,
+    /// Accent color tint
+    Accent,
+    /// Custom color with transparency
+    Custom(Hsla),
+}
+
+impl AcrylicTint {
+    pub fn color(&self, cx: &dyn crate::ActiveTheme) -> Hsla {
+        match self {
+            Self::System => cx.theme().background,
+            Self::Dark => cx.theme().popover,
+            Self::Light => cx.theme().popover,
+            Self::Accent => cx.theme().accent,
+            Self::Custom(color) => *color,
+        }
+    }
+}
+
+/// Acrylic styling effects for modern UI components
+pub trait AcrylicExt: Styled + Sized {
+    /// Apply acrylic effect with default medium intensity
+    fn acrylic<T>(self, cx: &T) -> Self
+    where
+        T: crate::ActiveTheme,
+    {
+        self.acrylic_with(AcrylicIntensity::Medium, AcrylicTint::System, cx)
+    }
+
+    /// Apply acrylic effect with custom intensity and tint
+    fn acrylic_with<T>(self, intensity: AcrylicIntensity, tint: AcrylicTint, cx: &T) -> Self
+    where
+        T: crate::ActiveTheme,
+    {
+        let base_color = tint.color(cx);
+        let opacity = intensity.opacity();
+        let border_opacity = intensity.border_opacity();
+
+        self.bg(base_color.opacity(opacity))
+            .border_1()
+            .border_color(cx.theme().border.opacity(border_opacity))
+            .shadow_lg()
+    }
+
+    /// Apply glass effect (lighter acrylic for overlays)
+    fn glass<T>(self, cx: &T) -> Self
+    where
+        T: crate::ActiveTheme,
+    {
+        self.bg(cx.theme().popover.opacity(0.8))
+            .border_1()
+            .border_color(cx.theme().border.opacity(0.3))
+            .shadow_lg()
+    }
+
+    /// Apply frosted glass effect for modals and overlays
+    fn frosted_glass<T>(self, cx: &T) -> Self
+    where
+        T: crate::ActiveTheme,
+    {
+        self.bg(cx.theme().background.opacity(0.7))
+            .border_1()
+            .border_color(cx.theme().border.opacity(0.4))
+            .shadow_2xl()
+    }
+
+    /// Apply elevated acrylic for important UI elements
+    fn elevated_acrylic<T>(self, cx: &T) -> Self
+    where
+        T: crate::ActiveTheme,
+    {
+        self.bg(cx.theme().background.opacity(0.95))
+            .border_1()
+            .border_color(cx.theme().border.opacity(0.5))
+            .shadow_2xl()
+    }
+
+    /// Apply subtle acrylic for background elements
+    fn subtle_acrylic<T>(self, cx: &T) -> Self
+    where
+        T: crate::ActiveTheme,
+    {
+        self.bg(cx.theme().background.opacity(0.95))
+            .border_1()
+            .border_color(cx.theme().border.opacity(0.1))
+            .shadow_sm()
+    }
+}
+
+impl<E: Styled> AcrylicExt for E {}
+
 /// A size for elements.
 #[derive(Clone, Default, Copy, PartialEq, Eq, Debug, Deserialize, Serialize)]
 pub enum Size {

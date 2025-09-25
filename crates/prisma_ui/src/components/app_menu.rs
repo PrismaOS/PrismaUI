@@ -1,15 +1,17 @@
 /// App menu component - Windows Start Menu / macOS Dock hybrid
-use gpui::{
-    div, img, px, Action, Context, Entity, EventEmitter, FocusHandle, Focusable,
-    IntoElement, ParentElement, Render, Styled, Window, AppContext, ElementId, Animation, AnimationExt
-};
-use std::time::Duration;
-use gpui_component::animation::cubic_bezier;
+use crate::PremiumAnimations;
 use gpui::prelude::FluentBuilder;
-use gpui_component::{
-    button::{Button, ButtonVariants as _}, h_flex, input::{InputEvent, InputState, TextInput},
-    v_flex, ActiveTheme, Icon, IconName, StyledExt, Selectable
+use gpui::{
+    div, img, px, Action, AnimationExt, AppContext, Context, ElementId, Entity, EventEmitter,
+    FocusHandle, Focusable, InteractiveElement, IntoElement, ParentElement, Render, Styled, Window,
 };
+use gpui_component::{
+    button::{Button, ButtonVariants as _},
+    h_flex,
+    input::{InputEvent, InputState, TextInput},
+    v_flex, ActiveTheme, Icon, IconName, Selectable, StyledExt,
+};
+use gpui_component::{AcrylicExt, AcrylicIntensity, AcrylicTint};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -98,21 +100,17 @@ pub struct AppMenu {
 
 impl AppMenu {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let search_input = cx.new(|cx| {
-            InputState::new(window, cx)
-                .placeholder("Search apps...")
-        });
+        let search_input = cx.new(|cx| InputState::new(window, cx).placeholder("Search apps..."));
 
         // Subscribe to search input changes
-        cx.subscribe(&search_input, |this, _, event, cx| {
-            match event {
-                InputEvent::Change => {
-                    let query = this.search_input.read(cx).value();
-                    this.search(&query, cx);
-                }
-                _ => {}
+        cx.subscribe(&search_input, |this, _, event, cx| match event {
+            InputEvent::Change => {
+                let query = this.search_input.read(cx).value();
+                this.search(&query, cx);
             }
-        }).detach();
+            _ => {}
+        })
+        .detach();
 
         // Create sample applications
         let mut apps = HashMap::new();
@@ -306,9 +304,9 @@ impl AppMenu {
             .into_iter()
             .filter_map(|id| self.apps.get(&id))
             .filter(|app| {
-                query.is_empty() ||
-                app.name.to_lowercase().contains(&query) ||
-                app.description.to_lowercase().contains(&query)
+                query.is_empty()
+                    || app.name.to_lowercase().contains(&query)
+                    || app.description.to_lowercase().contains(&query)
             })
             .cloned()
             .collect();
@@ -329,67 +327,86 @@ impl AppMenu {
         v_flex()
             .w(px(200.0))
             .h_full()
-            .bg(cx.theme().sidebar.opacity(0.8))
+            .glass(cx)
             .border_r_1()
-            .border_color(cx.theme().border.opacity(0.5))
             .p_4()
             .gap_3()
             .scrollable(gpui::Axis::Vertical)
-            .children(categories.iter().cloned().enumerate().map(|(idx, category)| {
-                let is_active = category == self.active_category;
-                let count = self.categories.get(&category).map_or(0, |apps| apps.len());
+            .children(
+                categories
+                    .iter()
+                    .cloned()
+                    .enumerate()
+                    .map(|(idx, category)| {
+                        let is_active = category == self.active_category;
+                        let count = self.categories.get(&category).map_or(0, |apps| apps.len());
 
-                Button::new(("category", idx))
-                    .w_full()
-                    .ghost()
-                    .justify_start()
-                    .px_3()
-                    .py_2()
-                    .when(is_active, |btn| btn.selected(true))
-                    .child(
-                        h_flex()
+                        Button::new(("category", idx))
                             .w_full()
-                            .items_center()
-                            .justify_between()
+                            .ghost()
+                            .justify_start()
+                            .px_3()
+                            .py_2()
+                            .when(is_active, |btn| btn.selected(true))
                             .child(
                                 h_flex()
+                                    .w_full()
                                     .items_center()
-                                    .gap_3()
-                                    .child(Icon::new(category.icon()).size_4().text_color(
-                                        if is_active { cx.theme().primary } else { cx.theme().muted_foreground }
-                                    ))
+                                    .justify_between()
                                     .child(
-                                        div()
-                                            .text_sm()
-                                            .font_medium()
-                                            .text_color(
-                                                if is_active { cx.theme().foreground } else { cx.theme().muted_foreground }
-                                            )
-                                            .child(category.display_name().to_string())
+                                        h_flex()
+                                            .items_center()
+                                            .gap_3()
+                                            .child(Icon::new(category.icon()).size_4().text_color(
+                                                if is_active {
+                                                    cx.theme().primary
+                                                } else {
+                                                    cx.theme().muted_foreground
+                                                },
+                                            ))
+                                            .child(
+                                                div()
+                                                    .text_sm()
+                                                    .font_medium()
+                                                    .text_color(if is_active {
+                                                        cx.theme().foreground
+                                                    } else {
+                                                        cx.theme().muted_foreground
+                                                    })
+                                                    .child(category.display_name().to_string()),
+                                            ),
                                     )
+                                    .when(count > 0, |this| {
+                                        this.child(
+                                            div()
+                                                .bg(if is_active {
+                                                    cx.theme().primary
+                                                } else {
+                                                    cx.theme().muted
+                                                })
+                                                .text_color(if is_active {
+                                                    cx.theme().primary_foreground
+                                                } else {
+                                                    cx.theme().muted_foreground
+                                                })
+                                                .px_2()
+                                                .py_1()
+                                                .rounded_full()
+                                                .text_xs()
+                                                .font_medium()
+                                                .min_w(px(20.0))
+                                                .flex()
+                                                .items_center()
+                                                .justify_center()
+                                                .child(count.to_string()),
+                                        )
+                                    }),
                             )
-                            .when(count > 0, |this| {
-                                this.child(
-                                    div()
-                                        .bg(if is_active { cx.theme().primary } else { cx.theme().muted })
-                                        .text_color(if is_active { cx.theme().primary_foreground } else { cx.theme().muted_foreground })
-                                        .px_2()
-                                        .py_1()
-                                        .rounded_full()
-                                        .text_xs()
-                                        .font_medium()
-                                        .min_w(px(20.0))
-                                        .flex()
-                                        .items_center()
-                                        .justify_center()
-                                        .child(count.to_string())
-                                )
-                            })
-                    )
-                    .on_click(cx.listener(move |this, _, _, cx| {
-                        this.set_category(category, cx);
-                    }))
-            }))
+                            .on_click(cx.listener(move |this, _, _, cx| {
+                                this.set_category(category, cx);
+                            }))
+                    }),
+            )
     }
 
     fn render_app_grid(&self, cx: &mut Context<Self>) -> impl IntoElement {
@@ -403,17 +420,14 @@ impl AppMenu {
             .gap_4()
             .child(
                 // Search bar
-                div()
-                    .w_full()
-                    .pl_4()
-                    .child(
-                        TextInput::new(&self.search_input)
-                            .w_full()
-                            .max_w(px(400.0))
-                            .h(px(42.0))
-                            .px_4()
-                            .rounded_lg()
-                    )
+                div().w_full().pl_4().child(
+                    TextInput::new(&self.search_input)
+                        .w_full()
+                        .max_w(px(400.0))
+                        .h(px(42.0))
+                        .px_4()
+                        .rounded_lg(),
+                ),
             )
             .child(
                 // App grid container with proper spacing
@@ -455,6 +469,7 @@ impl AppMenu {
                                             .flex()
                                             .items_center()
                                             .justify_center()
+                                            .hover(|this| this.shadow_lg())
                                             .on_click({
                                                 let app_id = app.id.clone();
                                                 cx.listener(move |this, _, window, cx| {
@@ -468,11 +483,15 @@ impl AppMenu {
                                                     .flex()
                                                     .items_center()
                                                     .justify_center()
-                                                    .bg(cx.theme().primary.opacity(0.1))
+                                                    .acrylic_with(
+                                                        AcrylicIntensity::Light,
+                                                        AcrylicTint::Accent,
+                                                        cx,
+                                                    )
                                                     .text_color(cx.theme().primary)
                                                     .rounded_xl()
-                                                    .child(Icon::new(app.icon.clone()).size_6())
-                                            )
+                                                    .child(Icon::new(app.icon.clone()).size_6()),
+                                            ),
                                     )
                                     .child(
                                         div()
@@ -483,10 +502,10 @@ impl AppMenu {
                                             .text_color(cx.theme().foreground)
                                             .line_clamp(2)
                                             .px_1()
-                                            .child(app.name.clone())
+                                            .child(app.name.clone()),
                                     )
-                            }))
-                    )
+                            })),
+                    ),
             )
     }
 
@@ -494,9 +513,8 @@ impl AppMenu {
         h_flex()
             .w_full()
             .h(px(70.0))
-            .bg(cx.theme().sidebar.opacity(0.3))
+            .subtle_acrylic(cx)
             .border_b_1()
-            .border_color(cx.theme().border.opacity(0.5))
             .px_4()
             .py_3()
             .items_center()
@@ -513,8 +531,8 @@ impl AppMenu {
                     .child(
                         Icon::new(IconName::User)
                             .size_6()
-                            .text_color(cx.theme().primary_foreground)
-                    )
+                            .text_color(cx.theme().primary_foreground),
+                    ),
             )
             .child(
                 v_flex()
@@ -525,21 +543,21 @@ impl AppMenu {
                             .text_base()
                             .font_semibold()
                             .text_color(cx.theme().foreground)
-                            .child("PrismaUI User")
+                            .child("PrismaUI User"),
                     )
                     .child(
                         div()
                             .text_xs()
                             .text_color(cx.theme().muted_foreground)
-                            .child("user@prismaui.dev")
-                    )
+                            .child("user@prismaui.dev"),
+                    ),
             )
             .child(
                 Button::new("user-settings")
                     .ghost()
                     .size(px(32.0))
                     .icon(IconName::Settings)
-                    .tooltip("User Settings")
+                    .tooltip("User Settings"),
             )
     }
 
@@ -547,9 +565,8 @@ impl AppMenu {
         h_flex()
             .w_full()
             .h(px(60.0))
-            .bg(cx.theme().sidebar.opacity(0.3))
+            .subtle_acrylic(cx)
             .border_t_1()
-            .border_color(cx.theme().border.opacity(0.5))
             .px_4()
             .items_center()
             .justify_end()
@@ -563,7 +580,7 @@ impl AppMenu {
                     .on_click(cx.listener(|this, _, _, cx| {
                         // TODO: Implement lock functionality
                         this.close(cx);
-                    }))
+                    })),
             )
             .child(
                 Button::new("sleep")
@@ -574,7 +591,7 @@ impl AppMenu {
                     .on_click(cx.listener(|this, _, _, cx| {
                         // TODO: Implement sleep functionality
                         this.close(cx);
-                    }))
+                    })),
             )
             .child(
                 Button::new("restart")
@@ -585,7 +602,7 @@ impl AppMenu {
                     .on_click(cx.listener(|this, _, _, cx| {
                         // TODO: Implement restart functionality
                         this.close(cx);
-                    }))
+                    })),
             )
             .child(
                 Button::new("shutdown")
@@ -596,7 +613,7 @@ impl AppMenu {
                     .on_click(cx.listener(|this, _, _, cx| {
                         // TODO: Implement shutdown functionality
                         this.close(cx);
-                    }))
+                    })),
             )
     }
 }
@@ -622,11 +639,8 @@ impl Render for AppMenu {
             .left(px(12.0)) // Left aligned
             .w(px(750.0)) // Wider for better app grid layout
             .h(px(720.0)) // Taller for additional sections
-            .bg(cx.theme().background.opacity(0.95))
-            .border_1()
-            .border_color(cx.theme().border)
-            .rounded(cx.theme().radius)
-            .shadow_2xl()
+            .elevated_acrylic(cx)
+            .rounded(cx.theme().radius_lg)
             .overflow_hidden()
             .child(
                 v_flex()
@@ -637,26 +651,19 @@ impl Render for AppMenu {
                             .flex_1()
                             .items_start()
                             .child(self.render_category_sidebar(cx))
-                            .child(
-                                div()
-                                    .flex_1()
-                                    .h_full()
-                                    .child(self.render_app_grid(cx))
-                            )
+                            .child(div().flex_1().h_full().child(self.render_app_grid(cx))),
                     )
-                    .child(self.render_power_menu(cx))
+                    .child(self.render_power_menu(cx)),
             )
             .with_animation(
                 ElementId::Name("start-menu-open".into()),
-                Animation::new(Duration::from_secs_f64(0.25))
-                    .with_easing(cubic_bezier(0.32, 0.72, 0., 1.)),
+                PremiumAnimations::modal_appear(),
                 move |this, delta| {
                     // Slide up from bottom and fade in
-                    let y_offset = px(30.) * (1. - delta);
-                    let opacity = 0.5 + (0.5 * delta);
-                    this.bottom(px(56.0) - y_offset)
-                        .opacity(opacity)
-                }
+                    let y_offset = px(40.) * (1. - delta);
+                    let opacity = 0.0 + (1.0 * delta);
+                    this.bottom(px(56.0) - y_offset).opacity(opacity)
+                },
             )
             .into_any_element()
     }

@@ -13,7 +13,17 @@
       "Read(//c/Users/redst/Pictures/Screenshots 1/**)",
       "Bash(timeout 15s cargo check -p prisma_ui)",
       "Bash(timeout 10s cargo check -p prisma_ui)",
-      "Bash(timeout 8s cargo check -p prisma_ui)"
+      "Bash(timeout 8s cargo check -p prisma_ui)",
+      "Read(//c/Users/redst/.cargo/git/checkouts/zed-a70e2ad075855582/53b2f37/crates/**)",
+      "Bash(find:*)",
+      "Bash(timeout 10s cargo build:*)",
+      "Bash(timeout 10s cargo check -p prisma_ui --message-format=short)",
+      "Bash(timeout 5s cargo check:*)",
+      "Bash(timeout 8s cargo check -p gpui-component --message-format=short)",
+      "Bash(timeout 8s cargo check --message-format=short)",
+      "Bash(rustc:*)",
+      "Bash(timeout 15s cargo check -p prisma_ui --message-format=short)",
+      "Bash(timeout 120s cargo check -p prisma_ui --message-format=short)"
     ],
     "deny": [],
     "ask": []

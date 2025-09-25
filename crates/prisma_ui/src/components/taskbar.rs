@@ -1,20 +1,24 @@
 /// Taskbar component - window switcher and system tray
-use gpui::{
-    div, img, px, Context, Entity, FocusHandle, Focusable, AppContext,
-    IntoElement, ParentElement, Render, Styled, Window, Bounds, Pixels, Animation, AnimationExt,
-    InteractiveElement, MouseButton
-};
-use gpui::prelude::FluentBuilder;
-use gpui_component::{
-    button::{Button, ButtonVariants as _}, h_flex, v_flex, ActiveTheme, Icon, IconName, StyledExt,
-    slider::{Slider, SliderState}, switch::Switch,
+use crate::PremiumAnimations;
+use crate::{
+    components::{AppMenu, CommandPalette},
+    window_manager::WindowManager,
 };
 use chrono::{DateTime, Local};
-use std::collections::HashMap;
-use crate::{
-    window_manager::WindowManager,
-    components::{AppMenu, CommandPalette}
+use gpui::prelude::FluentBuilder;
+use gpui::{
+    div, img, px, AnimationExt, AppContext, Bounds, Context, Entity, FocusHandle, Focusable,
+    InteractiveElement, IntoElement, MouseButton, ParentElement, Pixels, Render, Styled, Window,
 };
+use gpui_component::{
+    button::{Button, ButtonVariants as _},
+    h_flex,
+    slider::{Slider, SliderState},
+    switch::Switch,
+    v_flex, ActiveTheme, Icon, IconName, StyledExt,
+};
+use gpui_component::{AcrylicExt, AcrylicIntensity, AcrylicTint};
+use std::collections::HashMap;
 
 /// Icon type for tray icons
 #[derive(Clone)]
@@ -98,7 +102,9 @@ impl TrayIcon {
     /// Render the icon based on its type
     fn render_icon(&self) -> impl IntoElement {
         match &self.icon {
-            TrayIconType::Icon(icon_name) => Icon::new(icon_name.clone()).size_6().into_any_element(),
+            TrayIconType::Icon(icon_name) => {
+                Icon::new(icon_name.clone()).size_6().into_any_element()
+            }
             TrayIconType::Image(path) => img(path.clone()).w_6().h_6().into_any_element(),
         }
     }
@@ -115,26 +121,35 @@ impl Taskbar {
         let mut tray_icons = HashMap::new();
 
         // Add default system tray icons
-        tray_icons.insert("network".to_string(), TrayIcon {
-            id: "network".to_string(),
-            icon: TrayIconType::Image("icons/wifi/wifi-512.png".to_string()),
-            tooltip: "Network: Connected".to_string(),
-            badge_count: None,
-        });
+        tray_icons.insert(
+            "network".to_string(),
+            TrayIcon {
+                id: "network".to_string(),
+                icon: TrayIconType::Image("icons/wifi/wifi-512.png".to_string()),
+                tooltip: "Network: Connected".to_string(),
+                badge_count: None,
+            },
+        );
 
-        tray_icons.insert("battery".to_string(), TrayIcon {
-            id: "battery".to_string(),
-            icon: TrayIconType::Image("icons/battery/almost-empty-512.png".to_string()),
-            tooltip: "Battery: 85%".to_string(),
-            badge_count: None,
-        });
+        tray_icons.insert(
+            "battery".to_string(),
+            TrayIcon {
+                id: "battery".to_string(),
+                icon: TrayIconType::Image("icons/battery/almost-empty-512.png".to_string()),
+                tooltip: "Battery: 85%".to_string(),
+                badge_count: None,
+            },
+        );
 
-        tray_icons.insert("sound".to_string(), TrayIcon {
-            id: "sound".to_string(),
-            icon: TrayIconType::Image("icons/speaker.png".to_string()),
-            tooltip: "Volume: 70%".to_string(),
-            badge_count: None,
-        });
+        tray_icons.insert(
+            "sound".to_string(),
+            TrayIcon {
+                id: "sound".to_string(),
+                icon: TrayIconType::Image("icons/speaker.png".to_string()),
+                tooltip: "Volume: 70%".to_string(),
+                badge_count: None,
+            },
+        );
 
         // Initialize slider states
         let volume_slider = cx.new(|_| {
@@ -153,12 +168,15 @@ impl Taskbar {
                 .default_value(80.)
         });
 
-        tray_icons.insert("notifications".to_string(), TrayIcon {
-            id: "notifications".to_string(),
-            icon: TrayIconType::Image("icons/inbox.png".to_string()),
-            tooltip: "Notifications".to_string(),
-            badge_count: Some(3),
-        });
+        tray_icons.insert(
+            "notifications".to_string(),
+            TrayIcon {
+                id: "notifications".to_string(),
+                icon: TrayIconType::Image("icons/inbox.png".to_string()),
+                tooltip: "Notifications".to_string(),
+                badge_count: Some(3),
+            },
+        );
 
         Self {
             position: TaskbarPosition::Bottom,
@@ -191,7 +209,11 @@ impl Taskbar {
     }
 
     /// Set window manager reference for window switching
-    pub fn set_window_manager(&mut self, window_manager: Entity<WindowManager>, cx: &mut Context<Self>) {
+    pub fn set_window_manager(
+        &mut self,
+        window_manager: Entity<WindowManager>,
+        cx: &mut Context<Self>,
+    ) {
         self.window_manager = Some(window_manager);
         cx.notify();
     }
@@ -221,7 +243,12 @@ impl Taskbar {
     }
 
     /// Update tray icon badge count
-    pub fn update_tray_badge(&mut self, id: &str, badge_count: Option<u32>, cx: &mut Context<Self>) {
+    pub fn update_tray_badge(
+        &mut self,
+        id: &str,
+        badge_count: Option<u32>,
+        cx: &mut Context<Self>,
+    ) {
         if let Some(icon) = self.tray_icons.get_mut(id) {
             icon.badge_count = badge_count;
             cx.notify();
@@ -229,7 +256,12 @@ impl Taskbar {
     }
 
     /// Toggle tray popup
-    pub fn toggle_tray_popup(&mut self, popup_type: TrayPopupType, position: (Pixels, Pixels), cx: &mut Context<Self>) {
+    pub fn toggle_tray_popup(
+        &mut self,
+        popup_type: TrayPopupType,
+        position: (Pixels, Pixels),
+        cx: &mut Context<Self>,
+    ) {
         if let Some(ref active) = self.active_popup {
             if active.popup_type == popup_type {
                 // Close current popup
@@ -309,16 +341,17 @@ impl Taskbar {
 
     fn render_start_button(&self, cx: &mut Context<Self>) -> impl IntoElement {
         Button::new("start-button")
-            .primary()
+            .ghost()
             .size(px(40.0))
-            .bg(cx.theme().accent.opacity(0.8))  // Darker semi-transparent background
-            //.hover(|this| this.bg(cx.theme().accent))  // Full accent color on hover
             .child(
                 div()
                     .flex()
                     .items_center()
                     .justify_center()
-                    .child(img("icons/menu.png").w_5().h_5())
+                    .size_full()
+                    .acrylic_with(AcrylicIntensity::Medium, AcrylicTint::Accent, cx)
+                    .rounded_lg()
+                    .child(img("icons/menu.png").w_5().h_5().opacity(0.9)),
             )
             .on_click(cx.listener(|this, _, window, cx| {
                 this.app_menu.update(cx, |menu, cx| {
@@ -333,36 +366,31 @@ impl Taskbar {
 
             h_flex()
                 .gap_1()
-                .children(window_titles.into_iter().enumerate().map(|(idx, (window_id, title))| {
-                    Button::new(("window", idx))
-                        .ghost()
-                        .compact()
-                        .max_w(px(200.0))
-                        .child(
-                            h_flex()
-                                .items_center()
-                                .gap_2()
+                .children(
+                    window_titles
+                        .into_iter()
+                        .enumerate()
+                        .map(|(idx, (window_id, title))| {
+                            Button::new(("window", idx))
+                                .ghost()
+                                .compact()
+                                .max_w(px(200.0))
                                 .child(
-                                    div()
-                                        .size_4()
-                                        .bg(cx.theme().primary)
-                                        .rounded_full()
+                                    h_flex()
+                                        .items_center()
+                                        .gap_2()
+                                        .child(div().size_4().bg(cx.theme().primary).rounded_full())
+                                        .child(div().text_sm().truncate().child(title)),
                                 )
-                                .child(
-                                    div()
-                                        .text_sm()
-                                        .truncate()
-                                        .child(title)
-                                )
-                        )
-                        .on_click(cx.listener(move |this, _, window, cx| {
-                            if let Some(wm) = &this.window_manager {
-                                wm.update(cx, |wm, cx| {
-                                    wm.focus_or_restore_window(window_id, window, cx);
-                                });
-                            }
-                        }))
-                }))
+                                .on_click(cx.listener(move |this, _, window, cx| {
+                                    if let Some(wm) = &this.window_manager {
+                                        wm.update(cx, |wm, cx| {
+                                            wm.focus_or_restore_window(window_id, window, cx);
+                                        });
+                                    }
+                                }))
+                        }),
+                )
         } else {
             h_flex()
         }
@@ -399,7 +427,11 @@ impl Taskbar {
                                 .flex()
                                 .items_center()
                                 .justify_center()
-                                .child(if count > 9 { "9+".to_string() } else { count.to_string() })
+                                .child(if count > 9 {
+                                    "9+".to_string()
+                                } else {
+                                    count.to_string()
+                                }),
                         )
                     })
                     .tooltip(&icon.tooltip)
@@ -416,11 +448,8 @@ impl Taskbar {
     fn render_battery_tray(&self, cx: &mut Context<Self>) -> impl IntoElement {
         v_flex()
             .w(px(280.0))
-            .bg(cx.theme().background.opacity(0.95))
-            .border_1()
-            .border_color(cx.theme().border.opacity(0.3))
+            .frosted_glass(cx)
             .rounded_lg()
-            .shadow_xl()
             .p_4()
             .gap_3()
             .child(
@@ -438,16 +467,20 @@ impl Taskbar {
                                     .text_lg()
                                     .font_bold()
                                     .text_color(cx.theme().foreground)
-                                    .child("Battery")
-                            )
+                                    .child("Battery"),
+                            ),
                     )
                     .child(
                         div()
                             .text_2xl()
                             .font_bold()
-                            .text_color(if self.battery_percentage > 20.0 { cx.theme().foreground } else { cx.theme().danger })
-                            .child(format!("{}%", self.battery_percentage as i32))
-                    )
+                            .text_color(if self.battery_percentage > 20.0 {
+                                cx.theme().foreground
+                            } else {
+                                cx.theme().danger
+                            })
+                            .child(format!("{}%", self.battery_percentage as i32)),
+                    ),
             )
             .child(
                 // Battery status
@@ -463,9 +496,13 @@ impl Taskbar {
                                 div()
                                     .w(px((self.battery_percentage / 100.0) * 248.0))
                                     .h_full()
-                                    .bg(if self.battery_percentage > 20.0 { cx.theme().success } else { cx.theme().danger })
-                                    .rounded_full()
-                            )
+                                    .bg(if self.battery_percentage > 20.0 {
+                                        cx.theme().success
+                                    } else {
+                                        cx.theme().danger
+                                    })
+                                    .rounded_full(),
+                            ),
                     )
                     .child(
                         div()
@@ -475,8 +512,8 @@ impl Taskbar {
                                 "⚡ Charging - 2h 30m until full"
                             } else {
                                 "🔋 5h 20m remaining"
-                            })
-                    )
+                            }),
+                    ),
             )
             .child(
                 // Brightness control
@@ -496,20 +533,17 @@ impl Taskbar {
                                             .text_sm()
                                             .font_medium()
                                             .text_color(cx.theme().foreground)
-                                            .child("Brightness")
-                                    )
+                                            .child("Brightness"),
+                                    ),
                             )
                             .child(
                                 div()
                                     .text_sm()
                                     .text_color(cx.theme().muted_foreground)
-                                    .child("80%")
-                            )
+                                    .child("80%"),
+                            ),
                     )
-                    .child(
-                        Slider::new(&self.brightness_slider)
-                            .w_full()
-                    )
+                    .child(Slider::new(&self.brightness_slider).w_full()),
             )
             .child(
                 // Power modes
@@ -520,7 +554,7 @@ impl Taskbar {
                             .text_sm()
                             .font_medium()
                             .text_color(cx.theme().foreground)
-                            .child("Power Mode")
+                            .child("Power Mode"),
                     )
                     .child(
                         h_flex()
@@ -529,52 +563,46 @@ impl Taskbar {
                                 Button::new("power-saver")
                                     .ghost()
                                     .compact()
-                                    .child("💾 Power Saver")
+                                    .child("💾 Power Saver"),
                             )
                             .child(
                                 Button::new("balanced")
                                     .primary()
                                     .compact()
-                                    .child("⚖️ Balanced")
+                                    .child("⚖️ Balanced"),
                             )
                             .child(
                                 Button::new("performance")
                                     .ghost()
                                     .compact()
-                                    .child("🚀 Performance")
-                            )
-                    )
+                                    .child("🚀 Performance"),
+                            ),
+                    ),
             )
     }
 
     fn render_network_tray(&self, cx: &mut Context<Self>) -> impl IntoElement {
         v_flex()
             .w(px(320.0))
-            .bg(cx.theme().background.opacity(0.95))
-            .border_1()
-            .border_color(cx.theme().border.opacity(0.3))
+            .frosted_glass(cx)
             .rounded_lg()
-            .shadow_xl()
             .p_4()
             .gap_3()
             .child(
                 // Header
-                h_flex()
-                    .items_center()
-                    .justify_between()
-                    .child(
-                        h_flex()
-                            .items_center()
-                            .gap_2()
-                            .child(Icon::new(IconName::Globe).size_5())
-                            .child(
-                                div()
-                                    .text_lg()
-                                    .font_bold()
-                                    .text_color(cx.theme().foreground)
-                                    .child("Network & Internet")
-                            )
-                    )
+                h_flex().items_center().justify_between().child(
+                    h_flex()
+                        .items_center()
+                        .gap_2()
+                        .child(Icon::new(IconName::Globe).size_5())
+                        .child(
+                            div()
+                                .text_lg()
+                                .font_bold()
+                                .text_color(cx.theme().foreground)
+                                .child("Network & Internet"),
+                        ),
+                ),
             )
             .child(
                 // WiFi Section
@@ -594,17 +622,15 @@ impl Taskbar {
                                             .text_sm()
                                             .font_medium()
                                             .text_color(cx.theme().foreground)
-                                            .child("Wi-Fi")
-                                    )
+                                            .child("Wi-Fi"),
+                                    ),
                             )
-                            .child(
-                                Switch::new("wifi")
-                                    .checked(self.wifi_enabled)
-                                    .on_click(cx.listener(|this, checked, _, cx| {
-                                        // Toggle would be handled here
-                                        cx.notify();
-                                    }))
-                            )
+                            .child(Switch::new("wifi").checked(self.wifi_enabled).on_click(
+                                cx.listener(|this, checked, _, cx| {
+                                    // Toggle would be handled here
+                                    cx.notify();
+                                }),
+                            )),
                     )
                     .when(self.wifi_enabled, |this| {
                         this.child(
@@ -614,17 +640,17 @@ impl Taskbar {
                                     div()
                                         .text_sm()
                                         .text_color(cx.theme().muted_foreground)
-                                        .child("Connected to: Home Network")
+                                        .child("Connected to: Home Network"),
                                 )
                                 .child(
                                     Button::new("wifi-settings")
                                         .ghost()
                                         .compact()
                                         .w_full()
-                                        .child("WiFi Settings")
-                                )
+                                        .child("WiFi Settings"),
+                                ),
                         )
-                    })
+                    }),
             )
             .child(
                 // Bluetooth Section
@@ -644,8 +670,8 @@ impl Taskbar {
                                             .text_sm()
                                             .font_medium()
                                             .text_color(cx.theme().foreground)
-                                            .child("Bluetooth")
-                                    )
+                                            .child("Bluetooth"),
+                                    ),
                             )
                             .child(
                                 Switch::new("bluetooth")
@@ -653,8 +679,8 @@ impl Taskbar {
                                     .on_click(cx.listener(|this, checked, _, cx| {
                                         // Toggle would be handled here
                                         cx.notify();
-                                    }))
-                            )
+                                    })),
+                            ),
                     )
                     .when(self.bluetooth_enabled, |this| {
                         this.child(
@@ -662,20 +688,17 @@ impl Taskbar {
                                 .ghost()
                                 .compact()
                                 .w_full()
-                                .child("Bluetooth Settings")
+                                .child("Bluetooth Settings"),
                         )
-                    })
+                    }),
             )
     }
 
     fn render_volume_tray(&self, cx: &mut Context<Self>) -> impl IntoElement {
         v_flex()
             .w(px(280.0))
-            .bg(cx.theme().background.opacity(0.95))
-            .border_1()
-            .border_color(cx.theme().border.opacity(0.3))
+            .frosted_glass(cx)
             .rounded_lg()
-            .shadow_xl()
             .p_4()
             .gap_3()
             .child(
@@ -693,32 +716,27 @@ impl Taskbar {
                                     .text_lg()
                                     .font_bold()
                                     .text_color(cx.theme().foreground)
-                                    .child("Volume")
-                            )
+                                    .child("Volume"),
+                            ),
                     )
                     .child(
                         div()
                             .text_lg()
                             .font_bold()
                             .text_color(cx.theme().foreground)
-                            .child("70%")
-                    )
+                            .child("70%"),
+                    ),
             )
             .child(
                 // Volume slider
-                v_flex()
-                    .gap_2()
-                    .child(
-                        h_flex()
-                            .items_center()
-                            .gap_3()
-                            .child(Icon::new(IconName::Search).size_4())
-                            .child(
-                                Slider::new(&self.volume_slider)
-                                    .flex_1()
-                            )
-                            .child(Icon::new(IconName::SquareTerminal).size_4())
-                    )
+                v_flex().gap_2().child(
+                    h_flex()
+                        .items_center()
+                        .gap_3()
+                        .child(Icon::new(IconName::Search).size_4())
+                        .child(Slider::new(&self.volume_slider).flex_1())
+                        .child(Icon::new(IconName::SquareTerminal).size_4()),
+                ),
             )
             .child(
                 // Quick audio settings
@@ -729,7 +747,7 @@ impl Taskbar {
                             .text_sm()
                             .font_medium()
                             .text_color(cx.theme().foreground)
-                            .child("Audio Devices")
+                            .child("Audio Devices"),
                     )
                     .child(
                         Button::new("speakers")
@@ -741,8 +759,8 @@ impl Taskbar {
                                     .items_center()
                                     .gap_2()
                                     .child(Icon::new(IconName::SquareTerminal).size_4())
-                                    .child("Speakers (Active)")
-                            )
+                                    .child("Speakers (Active)"),
+                            ),
                     )
                     .child(
                         Button::new("headphones")
@@ -754,16 +772,16 @@ impl Taskbar {
                                     .items_center()
                                     .gap_2()
                                     .child(Icon::new(IconName::Search).size_4())
-                                    .child("Headphones")
-                            )
-                    )
+                                    .child("Headphones"),
+                            ),
+                    ),
             )
             .child(
                 // Sound settings button
                 Button::new("sound-settings")
                     .ghost()
                     .w_full()
-                    .child("Sound Settings")
+                    .child("Sound Settings"),
             )
     }
 
@@ -773,17 +791,22 @@ impl Taskbar {
                 TrayPopupType::Battery => self.render_battery_tray(cx).into_any_element(),
                 TrayPopupType::Network => self.render_network_tray(cx).into_any_element(),
                 TrayPopupType::Volume => self.render_volume_tray(cx).into_any_element(),
-                TrayPopupType::Clock => div().child("Clock settings coming soon...").into_any_element(),
+                TrayPopupType::Clock => div()
+                    .child("Clock settings coming soon...")
+                    .into_any_element(),
             };
 
             // Full-screen overlay for click-outside-to-close
             div()
                 .absolute()
                 .inset_0()
-                .on_mouse_down(MouseButton::Left, cx.listener(|this, _, _, cx| {
-                    this.active_popup = None;
-                    cx.notify();
-                }))
+                .on_mouse_down(
+                    MouseButton::Left,
+                    cx.listener(|this, _, _, cx| {
+                        this.active_popup = None;
+                        cx.notify();
+                    }),
+                )
                 .child(
                     div()
                         .absolute()
@@ -795,14 +818,14 @@ impl Taskbar {
                         })
                         .child(content)
                         .with_animation(
-                            "slide-up",
-                            Animation::new(std::time::Duration::from_millis(200))
-                                .with_easing(gpui_component::animation::cubic_bezier(0.4, 0.0, 0.2, 1.0)),
+                            "tray-popup-appear",
+                            PremiumAnimations::panel_slide_up(),
                             |this, delta| {
-                                let y_offset = px(20.) * (1.0 - delta);
-                                this.bottom(px(64.0) + y_offset)
-                            }
-                        )
+                                let y_offset = px(30.) * (1.0 - delta);
+                                let opacity = 0.0 + (1.0 * delta);
+                                this.bottom(px(64.0) + y_offset).opacity(opacity)
+                            },
+                        ),
                 )
         })
     }
@@ -817,13 +840,13 @@ impl Taskbar {
                     .text_sm()
                     .font_semibold()
                     .text_color(cx.theme().foreground)
-                    .child(self.current_time.format("%H:%M").to_string())
+                    .child(self.current_time.format("%H:%M").to_string()),
             )
             .child(
                 div()
                     .text_xs()
                     .text_color(cx.theme().muted_foreground)
-                    .child(self.current_time.format("%m/%d").to_string())
+                    .child(self.current_time.format("%m/%d").to_string()),
             )
     }
 
@@ -855,71 +878,55 @@ impl Render for Taskbar {
             .relative()
             .w_full()
             .h_full()
-            .child(
-                match self.position {
-            TaskbarPosition::Bottom => {
-                div()
-                    .absolute()
-                    .bottom_0()
-                    .left_0()
-                    .w_full()
-                    .h(taskbar_height)
-                    .bg(cx.theme().sidebar.opacity(0.95))
-                    .border_t_1()
-                    .border_color(cx.theme().border)
-                    .child(
-                        h_flex()
-                            .size_full()
-                            .items_center()
-                            .px_2()
-                            .gap_2()
-                            // Left section - Start button and window buttons
-                            .child(
-                                h_flex()
-                                    .items_center()
-                                    .gap_2()
-                                    .child(self.render_start_button(cx))
-                                    .child(self.render_search_button(cx))
-                                    .child(
-                                        div()
-                                            .w_px()
-                                            .h_6()
-                                            .bg(cx.theme().border)
-                                            .mx_2()
-                                    )
-                                    .child(self.render_window_buttons(cx))
-                            )
-                            // Right section - System tray and clock
-                            .child(
-                                h_flex()
-                                    .ml_auto()
-                                    .items_center()
-                                    .gap_2()
-                                    .child(self.render_system_tray(cx))
-                                    .child(
-                                        div()
-                                            .w_px()
-                                            .h_6()
-                                            .bg(cx.theme().border)
-                                            .mx_2()
-                                    )
-                                    .child(self.render_clock(cx))
-                            )
-                    )
-            }
-            // TODO: Implement other positions
-            _ => {
-                div()
+            .child(match self.position {
+                TaskbarPosition::Bottom => {
+                    div()
+                        .absolute()
+                        .bottom_0()
+                        .left_0()
+                        .w_full()
+                        .h(taskbar_height)
+                        .acrylic_with(AcrylicIntensity::Strong, AcrylicTint::Dark, cx)
+                        .border_t_1()
+                        .border_color(cx.theme().border.opacity(0.6))
+                        .child(
+                            h_flex()
+                                .size_full()
+                                .items_center()
+                                .px_2()
+                                .gap_2()
+                                // Left section - Start button and window buttons
+                                .child(
+                                    h_flex()
+                                        .items_center()
+                                        .gap_2()
+                                        .child(self.render_start_button(cx))
+                                        .child(self.render_search_button(cx))
+                                        .child(div().w_px().h_6().bg(cx.theme().border).mx_2())
+                                        .child(self.render_window_buttons(cx)),
+                                )
+                                // Right section - System tray and clock
+                                .child(
+                                    h_flex()
+                                        .ml_auto()
+                                        .items_center()
+                                        .gap_2()
+                                        .child(self.render_system_tray(cx))
+                                        .child(div().w_px().h_6().bg(cx.theme().border).mx_2())
+                                        .child(self.render_clock(cx)),
+                                ),
+                        )
+                }
+                // TODO: Implement other positions
+                _ => div()
                     .absolute()
                     .bottom_0()
                     .left_0()
                     .w_full()
                     .h(taskbar_height)
                     .bg(cx.theme().sidebar)
-                    .child("Taskbar (other positions not implemented yet)")
-            }
-        }
-            )
+                    .child("Taskbar (other positions not implemented yet)"),
+            })
             .children(self.render_tray_popup(cx))
     }
 }

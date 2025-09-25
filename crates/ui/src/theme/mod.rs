@@ -36,6 +36,13 @@ impl ActiveTheme for App {
     }
 }
 
+impl<T> ActiveTheme for gpui::Context<'_, T> {
+    #[inline(always)]
+    fn theme(&self) -> &Theme {
+        Theme::global(self)
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct Theme {
     pub colors: ThemeColor,

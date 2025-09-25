@@ -1,12 +1,14 @@
 use gpui::*;
 use gpui_component::Root;
 
+mod animations;
 mod assets;
-mod desktop;
-mod window_manager;
-mod shell;
 mod components;
+mod desktop;
+mod shell;
+mod window_manager;
 
+pub use animations::PremiumAnimations;
 pub use assets::Assets;
 use desktop::Desktop;
 
@@ -24,14 +26,22 @@ fn main() {
             cx.activate(true);
 
             // Check PRISMA_WINDOWED env
-            let windowed = std::env::var("PRISMA_WINDOWED").map(|v| v == "true" || v == "1").unwrap_or(false);
+            let windowed = std::env::var("PRISMA_WINDOWED")
+                .map(|v| v == "true" || v == "1")
+                .unwrap_or(false);
 
             // Set up main OS window
             let mut window_size = size(px(1920.), px(1080.));
             if let Some(display) = cx.primary_display() {
                 window_size = display.bounds().size;
             }
-            let window_bounds = Bounds::from_corners(Point::default(), Point { x: window_size.width, y: window_size.height });
+            let window_bounds = Bounds::from_corners(
+                Point::default(),
+                Point {
+                    x: window_size.width,
+                    y: window_size.height,
+                },
+            );
 
             cx.spawn(async move |cx| {
                 let options = if windowed {
