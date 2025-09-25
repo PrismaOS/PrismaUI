@@ -82,15 +82,17 @@ impl MemoryPool {
 
     /// Deallocate memory back to the pool
     pub fn deallocate(&self, mut chunk: MemoryChunk) {
-        chunk.is_free = true;
-        chunk.last_used = std::time::Instant::now();
+        let chunk_size = chunk.size;
+        let mut chunk_copy = chunk;
+        chunk_copy.is_free = true;
+        chunk_copy.last_used = std::time::Instant::now();
 
-        let chunk_queue = self.get_chunk_queue_for_size(chunk.size);
+        let chunk_queue = self.get_chunk_queue_for_size(chunk_size);
         if let Ok(mut chunks) = chunk_queue.lock() {
-            chunks.push_back(chunk);
+            chunks.push_back(chunk_copy);
         }
 
-        self.used_size.fetch_sub(chunk.size, Ordering::Relaxed);
+        self.used_size.fetch_sub(chunk_size, Ordering::Relaxed);
     }
 
     /// Get appropriate chunk queue based on size

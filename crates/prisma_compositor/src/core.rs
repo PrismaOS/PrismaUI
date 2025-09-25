@@ -145,14 +145,14 @@ impl Compositor {
             .request_device(
                 &DeviceDescriptor {
                     label: Some("PrismaUI High-Performance Device"),
-                    features: Features::MULTI_DRAW_INDIRECT
+                    required_features: Features::MULTI_DRAW_INDIRECT
                         | Features::INDIRECT_FIRST_INSTANCE
                         | Features::TIMESTAMP_QUERY
                         | Features::PIPELINE_STATISTICS_QUERY
                         | Features::TEXTURE_COMPRESSION_BC
                         | Features::TEXTURE_COMPRESSION_ETC2
                         | Features::TEXTURE_COMPRESSION_ASTC,
-                    limits,
+                    required_limits: limits,
                 },
                 None,
             )
@@ -175,6 +175,7 @@ impl Compositor {
             },
             alpha_mode: CompositeAlphaMode::Auto,
             view_formats: vec![],
+            desired_maximum_frame_latency: 2,
         };
 
         surface.configure(&device, &surface_config);
@@ -269,10 +270,10 @@ impl Compositor {
         self: Arc<Self>,
         event_loop: EventLoop<()>,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        let mut last_frame_time = std::time::Instant::now();
+        let _last_frame_time = std::time::Instant::now();
 
-        event_loop.run(move |event, _, control_flow| {
-            *control_flow = ControlFlow::Poll;
+        event_loop.run(move |event, elwt| {
+            elwt.set_control_flow(ControlFlow::Poll);
 
             match event {
                 Event::WindowEvent { event, .. } => {
@@ -281,7 +282,10 @@ impl Compositor {
                 Event::DeviceEvent { event, .. } => {
                     self.handle_device_event(event);
                 }
-                Event::RedrawRequested(_) => {
+                Event::AboutToWait => {
+                    // Trigger redraw
+                    self.request_redraw();
+
                     let frame_start = std::time::Instant::now();
 
                     // Multi-threaded frame rendering
@@ -297,17 +301,13 @@ impl Compositor {
 
                     self.frame_counter.fetch_add(1, Ordering::Relaxed);
                 }
-                Event::MainEventsCleared => {
-                    // Trigger redraw
-                    self.request_redraw();
-                }
                 _ => {}
             }
 
             if !self.running.load(Ordering::Relaxed) {
-                *control_flow = ControlFlow::Exit;
+                elwt.exit();
             }
-        });
+        })?;
 
         Ok(())
     }

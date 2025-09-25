@@ -154,24 +154,26 @@ impl Window {
         }
 
         // Window border
-        let border_color = if self.state.focused {
+        let _border_color = if self.state.focused {
             [0.4, 0.6, 1.0, 1.0] // Blue when focused
         } else {
             [0.5, 0.5, 0.5, 1.0] // Gray when unfocused
         };
 
         // Top border (title bar background)
+        let title_bar_id = self.generate_decoration_id();
         let title_bar = UIElement::rect(
-            self.generate_decoration_id(),
+            title_bar_id,
             UIRect::new(self.state.x, self.state.y, self.state.width, self.title_bar_height),
             [0.2, 0.2, 0.2, 1.0],
         );
         ui_system.add_element_to_layer(self.ui_layer, title_bar);
-        self.decoration_elements.push(title_bar.id);
+        self.decoration_elements.push(title_bar_id);
 
         // Title text
+        let title_text_id = self.generate_decoration_id();
         let title_text = UIElement::text(
-            self.generate_decoration_id(),
+            title_text_id,
             UIRect::new(
                 self.state.x + 10.0,
                 self.state.y + 6.0,
@@ -183,15 +185,16 @@ impl Window {
             [1.0, 1.0, 1.0, 1.0],
         );
         ui_system.add_element_to_layer(self.ui_layer, title_text);
-        self.decoration_elements.push(title_text.id);
+        self.decoration_elements.push(title_text_id);
 
         // Window control buttons
         let button_size = 24.0;
         let button_y = self.state.y + 4.0;
 
         // Close button
+        let close_button_id = self.generate_decoration_id();
         let close_button = UIElement::button(
-            self.generate_decoration_id(),
+            close_button_id,
             UIRect::new(
                 self.state.x + self.state.width - button_size - 8.0,
                 button_y,
@@ -202,11 +205,12 @@ impl Window {
             0,
         );
         ui_system.add_element_to_layer(self.ui_layer, close_button);
-        self.decoration_elements.push(close_button.id);
+        self.decoration_elements.push(close_button_id);
 
         // Maximize button
+        let maximize_button_id = self.generate_decoration_id();
         let maximize_button = UIElement::button(
-            self.generate_decoration_id(),
+            maximize_button_id,
             UIRect::new(
                 self.state.x + self.state.width - 2.0 * button_size - 12.0,
                 button_y,
@@ -217,11 +221,12 @@ impl Window {
             0,
         );
         ui_system.add_element_to_layer(self.ui_layer, maximize_button);
-        self.decoration_elements.push(maximize_button.id);
+        self.decoration_elements.push(maximize_button_id);
 
         // Minimize button
+        let minimize_button_id = self.generate_decoration_id();
         let minimize_button = UIElement::button(
-            self.generate_decoration_id(),
+            minimize_button_id,
             UIRect::new(
                 self.state.x + self.state.width - 3.0 * button_size - 16.0,
                 button_y,
@@ -232,49 +237,52 @@ impl Window {
             0,
         );
         ui_system.add_element_to_layer(self.ui_layer, minimize_button);
-        self.decoration_elements.push(minimize_button.id);
+        self.decoration_elements.push(minimize_button_id);
 
         // Left border
+        let left_border_id = self.generate_decoration_id();
         let left_border = UIElement::rect(
-            self.generate_decoration_id(),
+            left_border_id,
             UIRect::new(
                 self.state.x,
                 self.state.y + self.title_bar_height,
                 self.border_width,
                 self.state.height - self.title_bar_height,
             ),
-            border_color,
+            [0.5, 0.5, 0.5, 1.0],
         );
         ui_system.add_element_to_layer(self.ui_layer, left_border);
-        self.decoration_elements.push(left_border.id);
+        self.decoration_elements.push(left_border_id);
 
         // Right border
+        let right_border_id = self.generate_decoration_id();
         let right_border = UIElement::rect(
-            self.generate_decoration_id(),
+            right_border_id,
             UIRect::new(
                 self.state.x + self.state.width - self.border_width,
                 self.state.y + self.title_bar_height,
                 self.border_width,
                 self.state.height - self.title_bar_height,
             ),
-            border_color,
+            [0.5, 0.5, 0.5, 1.0],
         );
         ui_system.add_element_to_layer(self.ui_layer, right_border);
-        self.decoration_elements.push(right_border.id);
+        self.decoration_elements.push(right_border_id);
 
         // Bottom border
+        let bottom_border_id = self.generate_decoration_id();
         let bottom_border = UIElement::rect(
-            self.generate_decoration_id(),
+            bottom_border_id,
             UIRect::new(
                 self.state.x,
                 self.state.y + self.state.height - self.border_width,
                 self.state.width,
                 self.border_width,
             ),
-            border_color,
+            [0.5, 0.5, 0.5, 1.0],
         );
         ui_system.add_element_to_layer(self.ui_layer, bottom_border);
-        self.decoration_elements.push(bottom_border.id);
+        self.decoration_elements.push(bottom_border_id);
     }
 
     /// Update window position

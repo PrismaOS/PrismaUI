@@ -1,5 +1,5 @@
 /// Multi-threaded rendering system for maximum performance
-use std::sync::{Arc, Mutex, Condvar, atomic::{AtomicBool, Ordering}};
+use std::sync::{Arc, Mutex, Condvar, atomic::{AtomicBool, Ordering}, mpsc};
 use std::collections::VecDeque;
 use std::thread::{self, JoinHandle};
 use wgpu::*;
@@ -10,8 +10,6 @@ pub struct ThreadPool {
     workers: Vec<Worker>,
     sender: Arc<Mutex<mpsc::Sender<Job>>>,
 }
-
-use std::sync::mpsc;
 
 type Job = Box<dyn FnOnce() + Send + 'static>;
 

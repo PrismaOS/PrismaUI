@@ -381,18 +381,20 @@ impl BatchRenderer {
             Vertex { position: [0.0, 1.0], tex_coords: [0.0, 0.0], color: [1.0, 1.0, 1.0, 1.0] },
         ];
 
-        let quad_vertex_buffer = device.create_buffer_init(&util::BufferInitDescriptor {
+        let quad_vertex_buffer = device.create_buffer(&BufferDescriptor {
             label: Some("Quad Vertex Buffer"),
-            contents: bytemuck::cast_slice(&quad_vertices),
-            usage: BufferUsages::VERTEX,
+            size: (quad_vertices.len() * std::mem::size_of::<Vertex>()) as u64,
+            usage: BufferUsages::VERTEX | BufferUsages::COPY_DST,
+            mapped_at_creation: false,
         });
 
         // Create index buffer
         let indices: &[u16] = &[0, 1, 2, 0, 2, 3];
-        let index_buffer = device.create_buffer_init(&util::BufferInitDescriptor {
+        let index_buffer = device.create_buffer(&BufferDescriptor {
             label: Some("Index Buffer"),
-            contents: bytemuck::cast_slice(indices),
-            usage: BufferUsages::INDEX,
+            size: (indices.len() * std::mem::size_of::<u16>()) as u64,
+            usage: BufferUsages::INDEX | BufferUsages::COPY_DST,
+            mapped_at_creation: false,
         });
 
         // Create uniform buffer
@@ -512,10 +514,12 @@ impl BatchRenderer {
                 resolve_target: None,
                 ops: Operations {
                     load: LoadOp::Load,
-                    store: true,
+                    store: StoreOp::Store,
                 },
             })],
             depth_stencil_attachment: None,
+            occlusion_query_set: None,
+            timestamp_writes: None,
         });
 
         // Set pipeline and resources

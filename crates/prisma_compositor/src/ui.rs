@@ -190,7 +190,7 @@ pub struct UIImage {
 }
 
 /// UI layer for organizing rendering
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct UILayer {
     pub id: u64,
     pub name: String,
