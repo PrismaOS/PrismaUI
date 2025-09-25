@@ -19,7 +19,7 @@ A modern, modular, and efficient operating system UI built with GPUI, designed a
 - **System Shell**: Desktop interactions, context menus, and drag-drop
 
 ### Modern Design
-- **Hybrid Aesthetic**: Combines Windows 11 and macOS design principles
+- **Hybrid Aesthetic**: Combines modern OS design principles
 - **Smooth Animations**: GPU-accelerated window transitions and effects
 - **Responsive Layouts**: Adaptive UI that scales with screen resolution
 - **Theme Support**: Consistent styling with customizable themes

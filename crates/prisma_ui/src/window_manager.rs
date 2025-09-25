@@ -357,12 +357,26 @@ impl WindowManager {
 
     /// Handle window drag movement
     fn handle_drag_move(&mut self, position: Point<Pixels>, _: &mut Window, cx: &mut Context<Self>) {
-        if let Some(_window_id) = self.dragging_window {
-            // Store the position for processing in the next render
-            self.pending_drag_position = Some(position);
-            // Calculate snap zone
+        if let Some(window_id) = self.dragging_window {
+            // Calculate snap zone for visual feedback only (optional: skip if not needed)
             self.snap_zone = self.calculate_snap_zone(position);
-            cx.notify();
+
+            // Update window position immediately, only update the dragged window
+            if let Some(managed_window) = self.windows.get(&window_id) {
+                let old_bounds = self.window_bounds.get(&window_id).copied().unwrap_or_default();
+                let mut new_bounds = old_bounds;
+                new_bounds.origin = Point {
+                    x: position.x - self.drag_offset.x,
+                    y: position.y - self.drag_offset.y,
+                };
+                managed_window.update(cx, |w, cx| {
+                    w.set_bounds(new_bounds, cx);
+                });
+                self.update_window_bounds(window_id, new_bounds);
+                // Only emit event for the dragged window, do not call global cx.notify()
+                cx.emit(WindowEvent::Moved { id: window_id, position: new_bounds.origin });
+            }
+            // Do not call cx.notify() here to avoid global redraws
         }
     }
 
@@ -528,30 +542,7 @@ impl Render for WindowManager {
         if let Some(window_id) = self.pending_focus_window.take() {
             self.focus_window(window_id, window, cx);
         }
-
-        // Process pending drag position update to avoid reentrancy
-        if let (Some(mouse_position), Some(window_id)) = (self.pending_drag_position.take(), self.dragging_window) {
-            if let Some(managed_window) = self.windows.get(&window_id) {
-                let new_bounds = {
-                    let old_bounds = self.window_bounds.get(&window_id).copied().unwrap_or_default();
-                    let mut new_bounds = old_bounds;
-                    // Apply the drag offset to maintain relative position
-                    new_bounds.origin = Point {
-                        x: mouse_position.x - self.drag_offset.x,
-                        y: mouse_position.y - self.drag_offset.y,
-                    };
-                    new_bounds
-                };
-
-                // Update both the actual window and cached bounds
-                managed_window.update(cx, |w, cx| {
-                    w.set_bounds(new_bounds, cx);
-                });
-                self.update_window_bounds(window_id, new_bounds);
-
-                cx.emit(WindowEvent::Moved { id: window_id, position: new_bounds.origin });
-            }
-        }
+        // No more deferred drag update: dragging is now always immediate
 
         // Process pending window management actions to avoid reentrancy
         if let Some(window_id) = self.pending_minimize_window.take() {
@@ -629,36 +620,30 @@ impl Render for WindowManager {
             }
         }
 
-        // Sort windows by z-index (higher z-index = on top)
+        // Cache z-index order for this frame to avoid repeated sorting
         let mut window_data: Vec<_> = self.windows.iter().map(|(&id, window)| {
             let z_index = self.window_z_index.get(&id).copied().unwrap_or(0);
-            (window.clone(), z_index)
+            (window.clone(), z_index, id)
         }).collect();
-        window_data.sort_by_key(|(_, z_index)| *z_index);
-        let windows: Vec<_> = window_data.into_iter().map(|(window, _)| window).collect();
+        window_data.sort_by_key(|(_, z_index, _)| *z_index);
+        let windows: Vec<_> = window_data.iter().map(|(window, _, _)| window.clone()).collect();
+        // Store sorted ids for fast hit-testing
+        let sorted_window_ids: Vec<WindowId> = window_data.iter().map(|(_, _, id)| *id).collect();
 
         div()
             .absolute()
             .size_full()
             .children(windows)
-            .on_mouse_down(MouseButton::Left, cx.listener(|this, event: &MouseDownEvent, _window, cx| {
-                // Check windows in z-index order (highest first) to prevent passthrough
-                let mut window_hits: Vec<(WindowId, i32)> = this.window_bounds.iter()
-                    .filter_map(|(&id, &bounds)| {
+            .on_mouse_down(MouseButton::Left, cx.listener(move |this, event: &MouseDownEvent, _window, cx| {
+                // Use cached sorted_window_ids for fast hit-testing (topmost last)
+                for &id in sorted_window_ids.iter().rev() {
+                    if let Some(bounds) = this.window_bounds.get(&id) {
                         if bounds.contains(&event.position) {
-                            let z_index = this.window_z_index.get(&id).copied().unwrap_or(0);
-                            Some((id, z_index))
-                        } else {
-                            None
+                            this.pending_focus_window = Some(id);
+                            cx.notify();
+                            break;
                         }
-                    })
-                    .collect();
-
-                // Sort by z-index (highest first) and only focus the topmost window
-                window_hits.sort_by_key(|(_, z_index)| -z_index);
-                if let Some((top_window_id, _)) = window_hits.first() {
-                    this.pending_focus_window = Some(*top_window_id);
-                    cx.notify();
+                    }
                 }
             }))
             .on_mouse_move(cx.listener(|this, event: &MouseMoveEvent, window, cx| {

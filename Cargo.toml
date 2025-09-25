@@ -5,6 +5,7 @@ members = [
     "crates/story",
     "crates/ui",
     "crates/prisma_ui",
+    "crates/prisma_compositor",
     "crates/wef",
     "crates/wef/tool",
     "crates/wef/examples/wef-winit",
@@ -25,6 +26,7 @@ gpui-component = { path = "crates/ui" }
 gpui-component-macros = { path = "crates/macros" }
 story = { path = "crates/story" }
 wef = { path = "crates/wef" }
+prisma_compositor = { path = "crates/prisma_compositor" }
 
 anyhow = "1"
 log = "0.4"
