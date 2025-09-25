@@ -23,7 +23,10 @@ fn main() {
             gpui_component::init(cx);
             cx.activate(true);
 
-            // Set up main OS window - fullscreen composite surface
+            // Check PRISMA_WINDOWED env
+            let windowed = std::env::var("PRISMA_WINDOWED").map(|v| v == "true" || v == "1").unwrap_or(false);
+
+            // Set up main OS window
             let mut window_size = size(px(1920.), px(1080.));
             if let Some(display) = cx.primary_display() {
                 window_size = display.bounds().size;
@@ -31,16 +34,30 @@ fn main() {
             let window_bounds = Bounds::from_corners(Point::default(), Point { x: window_size.width, y: window_size.height });
 
             cx.spawn(async move |cx| {
-                let options = WindowOptions {
-                    window_bounds: Some(WindowBounds::Windowed(window_bounds)),
-                    titlebar: None,
-                    window_decorations: Some(gpui::WindowDecorations::Client),
-                    window_min_size: Some(gpui::Size {
-                        width: px(1024.),
-                        height: px(768.),
-                    }),
-                    kind: WindowKind::PopUp,
-                    ..Default::default()
+                let options = if windowed {
+                    WindowOptions {
+                        window_bounds: Some(WindowBounds::Windowed(window_bounds)),
+                        titlebar: None,
+                        window_decorations: Some(gpui::WindowDecorations::Client),
+                        window_min_size: Some(gpui::Size {
+                            width: px(1024.),
+                            height: px(768.),
+                        }),
+                        kind: WindowKind::PopUp,
+                        ..Default::default()
+                    }
+                } else {
+                    WindowOptions {
+                        window_bounds: Some(WindowBounds::Fullscreen(window_bounds)),
+                        titlebar: None,
+                        window_decorations: Some(gpui::WindowDecorations::Client),
+                        window_min_size: Some(gpui::Size {
+                            width: px(1024.),
+                            height: px(768.),
+                        }),
+                        kind: WindowKind::PopUp,
+                        ..Default::default()
+                    }
                 };
 
                 let window = cx
