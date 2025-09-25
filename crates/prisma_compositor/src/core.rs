@@ -405,130 +405,58 @@ impl Compositor {
         {
             let mut ui_pass = self.simple_renderer.begin_ui_pass(&mut encoder, &view);
 
-            // Render taskbar at bottom
-            self.simple_renderer.render_rect_in_pass(
-                &mut ui_pass,
-                0.0,
-                screen_height - 48.0,
-                screen_width,
-                48.0,
-                [0.1, 0.1, 0.1, 0.95], // Semi-transparent dark taskbar
-                screen_width,
-                screen_height,
-            );
+            // Get UI layers from the window manager's UI system
+            let window_manager = self.window_manager.read().unwrap();
+            let ui_system = window_manager.get_ui_system();
+            let layers = ui_system.get_layers_for_rendering();
 
-            // Render sample windows
-            // Window 1 - Text Editor
-            self.simple_renderer.render_rect_in_pass(
-                &mut ui_pass,
-                100.0,
-                100.0,
-                800.0,
-                600.0,
-                [0.95, 0.95, 0.95, 1.0], // Light gray window background
-                screen_width,
-                screen_height,
-            );
+            println!("🎨 Rendering {} layers", layers.len());
 
-            // Title bar for window 1
-            self.simple_renderer.render_rect_in_pass(
-                &mut ui_pass,
-                100.0,
-                100.0,
-                800.0,
-                32.0,
-                [0.3, 0.5, 0.8, 1.0], // Blue title bar
-                screen_width,
-                screen_height,
-            );
+            // Render all UI elements from all layers in order
+            for (layer_idx, layer) in layers.iter().enumerate() {
+                if !layer.visible {
+                    println!("   Layer {} '{}' is not visible, skipping", layer_idx, layer.name);
+                    continue;
+                }
 
-            // Window 2 - File Manager
-            self.simple_renderer.render_rect_in_pass(
-                &mut ui_pass,
-                200.0,
-                150.0,
-                700.0,
-                500.0,
-                [0.9, 0.9, 0.9, 1.0], // Light gray window background
-                screen_width,
-                screen_height,
-            );
+                println!("   Layer {} '{}' has {} elements", layer_idx, layer.name, layer.elements.len());
 
-            // Title bar for window 2
-            self.simple_renderer.render_rect_in_pass(
-                &mut ui_pass,
-                200.0,
-                150.0,
-                700.0,
-                32.0,
-                [0.2, 0.7, 0.4, 1.0], // Green title bar
-                screen_width,
-                screen_height,
-            );
+                for (elem_idx, element) in layer.elements.iter().enumerate() {
+                    println!("     Element {} type: {:?}, rect: {:?}, color: {:?}",
+                        elem_idx, element.element_type, element.rect, element.color);
 
-            // Window 3 - Terminal
-            self.simple_renderer.render_rect_in_pass(
-                &mut ui_pass,
-                300.0,
-                200.0,
-                600.0,
-                400.0,
-                [0.05, 0.05, 0.05, 1.0], // Dark terminal background
-                screen_width,
-                screen_height,
-            );
+                    // Render all UI elements as rectangles for now
+                    match element.element_type {
+                        crate::ui::UIElementType::Rect |
+                        crate::ui::UIElementType::Button |
+                        crate::ui::UIElementType::Panel |
+                        crate::ui::UIElementType::Window |
+                        crate::ui::UIElementType::Text => {  // Render text as colored rectangles for now
+                            println!("       Rendering rect at ({}, {}) size {}x{}",
+                                element.rect.x, element.rect.y, element.rect.width, element.rect.height);
 
-            // Title bar for window 3
-            self.simple_renderer.render_rect_in_pass(
-                &mut ui_pass,
-                300.0,
-                200.0,
-                600.0,
-                32.0,
-                [0.1, 0.1, 0.1, 1.0], // Dark title bar
-                screen_width,
-                screen_height,
-            );
-
-            // Render system tray icons
-            let tray_x = screen_width - 200.0;
-            let tray_y = screen_height - 40.0;
-
-            // Network icon
-            self.simple_renderer.render_rect_in_pass(
-                &mut ui_pass,
-                tray_x,
-                tray_y,
-                24.0,
-                24.0,
-                [0.0, 0.8, 0.0, 1.0], // Green network icon
-                screen_width,
-                screen_height,
-            );
-
-            // Battery icon
-            self.simple_renderer.render_rect_in_pass(
-                &mut ui_pass,
-                tray_x + 28.0,
-                tray_y,
-                24.0,
-                24.0,
-                [1.0, 0.8, 0.0, 1.0], // Yellow battery icon
-                screen_width,
-                screen_height,
-            );
-
-            // Volume icon
-            self.simple_renderer.render_rect_in_pass(
-                &mut ui_pass,
-                tray_x + 56.0,
-                tray_y,
-                24.0,
-                24.0,
-                [0.8, 0.8, 0.8, 1.0], // Gray volume icon
-                screen_width,
-                screen_height,
-            );
+                            // Skip tiny or zero-sized elements
+                            if element.rect.width > 0.1 && element.rect.height > 0.1 {
+                                self.simple_renderer.render_rect_in_pass(
+                                    &mut ui_pass,
+                                    element.rect.x,
+                                    element.rect.y,
+                                    element.rect.width,
+                                    element.rect.height,
+                                    element.color,
+                                    screen_width,
+                                    screen_height,
+                                );
+                            } else {
+                                println!("       Skipping tiny element: {}x{}", element.rect.width, element.rect.height);
+                            }
+                        }
+                        crate::ui::UIElementType::Image => {
+                            println!("       Skipping image element (not implemented yet)");
+                        }
+                    }
+                }
+            }
         } // UI render pass ends here
 
         // Submit the command buffer

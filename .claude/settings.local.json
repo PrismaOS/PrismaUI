@@ -24,7 +24,10 @@
       "Bash(rustc:*)",
       "Bash(timeout 15s cargo check -p prisma_ui --message-format=short)",
       "Bash(timeout 120s cargo check -p prisma_ui --message-format=short)",
-      "Read(//c/Users/redst/.cargo/**)"
+      "Read(//c/Users/redst/.cargo/**)",
+      "Bash(timeout 30s cargo check -p prisma_compositor --message-format=short)",
+      "Bash(timeout 8s cargo run -p prisma_compositor)",
+      "Bash(timeout:*)"
     ],
     "deny": [],
     "ask": []
