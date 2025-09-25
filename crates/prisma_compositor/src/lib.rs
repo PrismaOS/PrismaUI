@@ -9,6 +9,7 @@
 
 pub mod core;
 pub mod renderer;
+pub mod simple_renderer;
 pub mod window;
 pub mod ui;
 pub mod assets;

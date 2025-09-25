@@ -12,6 +12,7 @@ use winit::{
 
 use crate::{
     renderer::{WgpuRenderer, RenderCommand, RenderFrame},
+    simple_renderer::SimpleRenderer,
     window::{WindowManager, WindowId},
     threading::{ThreadPool, RenderThread, ComputeThread},
     memory::{MemoryPool, BufferPool, TexturePool},
@@ -77,11 +78,12 @@ pub struct Compositor {
     /// WGPU instance and core rendering
     pub device: Arc<Device>,
     pub queue: Arc<Queue>,
-    pub surface: Arc<Mutex<Surface>>,
+    pub surface: Arc<Mutex<wgpu::Surface<'static>>>,
     pub surface_config: Arc<RwLock<SurfaceConfiguration>>,
 
     /// Multi-threaded rendering system
     pub renderer: Arc<WgpuRenderer>,
+    pub simple_renderer: Arc<SimpleRenderer>,
     pub thread_pool: Arc<ThreadPool>,
     pub render_threads: Vec<RenderThread>,
     pub compute_threads: Vec<ComputeThread>,
@@ -122,7 +124,11 @@ impl Compositor {
             gles_minor_version: Gles3MinorVersion::Automatic,
         });
 
-        let surface = unsafe { instance.create_surface(&*window)? };
+        let surface = unsafe {
+            std::mem::transmute::<wgpu::Surface<'_>, wgpu::Surface<'static>>(
+                instance.create_surface(window.as_ref())?
+            )
+        };
 
         // Request adapter with high-performance preferences
         let adapter = instance
@@ -140,18 +146,48 @@ impl Compositor {
         limits.max_buffer_size = 1024 * 1024 * 256; // 256MB max buffer
         limits.max_storage_buffer_binding_size = 1024 * 1024 * 128; // 128MB storage buffers
 
-        // Request device with advanced features
+        // Get adapter features and filter out unsupported ones
+        let adapter_features = adapter.features();
+        let mut requested_features = Features::empty();
+
+        // Add basic performance features if supported
+        if adapter_features.contains(Features::MULTI_DRAW_INDIRECT) {
+            requested_features |= Features::MULTI_DRAW_INDIRECT;
+        }
+        if adapter_features.contains(Features::INDIRECT_FIRST_INSTANCE) {
+            requested_features |= Features::INDIRECT_FIRST_INSTANCE;
+        }
+        if adapter_features.contains(Features::TIMESTAMP_QUERY) {
+            requested_features |= Features::TIMESTAMP_QUERY;
+        }
+        if adapter_features.contains(Features::PIPELINE_STATISTICS_QUERY) {
+            requested_features |= Features::PIPELINE_STATISTICS_QUERY;
+        }
+
+        // Add texture compression features if supported
+        if adapter_features.contains(Features::TEXTURE_COMPRESSION_BC) {
+            requested_features |= Features::TEXTURE_COMPRESSION_BC;
+        }
+        if adapter_features.contains(Features::TEXTURE_COMPRESSION_ETC2) {
+            requested_features |= Features::TEXTURE_COMPRESSION_ETC2;
+        }
+        if adapter_features.contains(Features::TEXTURE_COMPRESSION_ASTC) {
+            requested_features |= Features::TEXTURE_COMPRESSION_ASTC;
+        }
+
+        println!("🎮 GPU Features:");
+        println!("   - Multi-draw Indirect: {}", adapter_features.contains(Features::MULTI_DRAW_INDIRECT));
+        println!("   - Timestamp Queries: {}", adapter_features.contains(Features::TIMESTAMP_QUERY));
+        println!("   - BC Compression: {}", adapter_features.contains(Features::TEXTURE_COMPRESSION_BC));
+        println!("   - ETC2 Compression: {}", adapter_features.contains(Features::TEXTURE_COMPRESSION_ETC2));
+        println!("   - ASTC Compression: {}", adapter_features.contains(Features::TEXTURE_COMPRESSION_ASTC));
+
+        // Request device with supported features
         let (device, queue) = adapter
             .request_device(
                 &DeviceDescriptor {
                     label: Some("PrismaUI High-Performance Device"),
-                    required_features: Features::MULTI_DRAW_INDIRECT
-                        | Features::INDIRECT_FIRST_INSTANCE
-                        | Features::TIMESTAMP_QUERY
-                        | Features::PIPELINE_STATISTICS_QUERY
-                        | Features::TEXTURE_COMPRESSION_BC
-                        | Features::TEXTURE_COMPRESSION_ETC2
-                        | Features::TEXTURE_COMPRESSION_ASTC,
+                    required_features: requested_features,
                     required_limits: limits,
                 },
                 None,
@@ -224,6 +260,12 @@ impl Compositor {
             &config,
         ).await?);
 
+        let simple_renderer = Arc::new(SimpleRenderer::new(
+            device.clone(),
+            queue.clone(),
+            surface_config.read().unwrap().format,
+        ));
+
         let window_manager = Arc::new(RwLock::new(WindowManager::new()));
         let asset_manager = Arc::new(AssetManager::new(
             device.clone(),
@@ -248,6 +290,7 @@ impl Compositor {
             surface,
             surface_config,
             renderer,
+            simple_renderer,
             thread_pool,
             render_threads,
             compute_threads,
@@ -322,19 +365,182 @@ impl Compositor {
             surface.get_current_texture()?
         };
 
-        // Create multi-threaded render frame
-        let render_frame = RenderFrame::new(
-            surface_texture,
-            self.device.clone(),
-            self.queue.clone(),
-            &self.config,
+        let view = surface_texture.texture.create_view(&wgpu::TextureViewDescriptor::default());
+
+        // Create command encoder
+        let mut encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+            label: Some("Render Encoder"),
+        });
+
+        // Clear the screen with blue background
+        {
+            let _render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("Clear Pass"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &view,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(wgpu::Color {
+                            r: 0.1,
+                            g: 0.2,
+                            b: 0.3,
+                            a: 1.0,
+                        }),
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                depth_stencil_attachment: None,
+                occlusion_query_set: None,
+                timestamp_writes: None,
+            });
+        }
+
+        // Get screen size
+        let surface_config = self.surface_config.read().unwrap();
+        let screen_width = surface_config.width as f32;
+        let screen_height = surface_config.height as f32;
+        drop(surface_config);
+
+        // Render taskbar at bottom
+        self.simple_renderer.render_rect(
+            &mut encoder,
+            &view,
+            0.0,
+            screen_height - 48.0,
+            screen_width,
+            48.0,
+            [0.1, 0.1, 0.1, 0.95], // Semi-transparent dark taskbar
+            screen_width,
+            screen_height,
         );
 
-        // Execute render commands in parallel
-        self.execute_parallel_rendering(&render_frame).await?;
+        // Render sample windows
+        // Window 1 - Text Editor
+        self.simple_renderer.render_rect(
+            &mut encoder,
+            &view,
+            100.0,
+            100.0,
+            800.0,
+            600.0,
+            [0.95, 0.95, 0.95, 1.0], // Light gray window background
+            screen_width,
+            screen_height,
+        );
+
+        // Title bar for window 1
+        self.simple_renderer.render_rect(
+            &mut encoder,
+            &view,
+            100.0,
+            100.0,
+            800.0,
+            32.0,
+            [0.3, 0.5, 0.8, 1.0], // Blue title bar
+            screen_width,
+            screen_height,
+        );
+
+        // Window 2 - File Manager
+        self.simple_renderer.render_rect(
+            &mut encoder,
+            &view,
+            200.0,
+            150.0,
+            700.0,
+            500.0,
+            [0.9, 0.9, 0.9, 1.0], // Light gray window background
+            screen_width,
+            screen_height,
+        );
+
+        // Title bar for window 2
+        self.simple_renderer.render_rect(
+            &mut encoder,
+            &view,
+            200.0,
+            150.0,
+            700.0,
+            32.0,
+            [0.2, 0.7, 0.4, 1.0], // Green title bar
+            screen_width,
+            screen_height,
+        );
+
+        // Window 3 - Terminal
+        self.simple_renderer.render_rect(
+            &mut encoder,
+            &view,
+            300.0,
+            200.0,
+            600.0,
+            400.0,
+            [0.05, 0.05, 0.05, 1.0], // Dark terminal background
+            screen_width,
+            screen_height,
+        );
+
+        // Title bar for window 3
+        self.simple_renderer.render_rect(
+            &mut encoder,
+            &view,
+            300.0,
+            200.0,
+            600.0,
+            32.0,
+            [0.1, 0.1, 0.1, 1.0], // Dark title bar
+            screen_width,
+            screen_height,
+        );
+
+        // Render system tray icons
+        let tray_x = screen_width - 200.0;
+        let tray_y = screen_height - 40.0;
+
+        // Network icon
+        self.simple_renderer.render_rect(
+            &mut encoder,
+            &view,
+            tray_x,
+            tray_y,
+            24.0,
+            24.0,
+            [0.0, 0.8, 0.0, 1.0], // Green network icon
+            screen_width,
+            screen_height,
+        );
+
+        // Battery icon
+        self.simple_renderer.render_rect(
+            &mut encoder,
+            &view,
+            tray_x + 28.0,
+            tray_y,
+            24.0,
+            24.0,
+            [1.0, 0.8, 0.0, 1.0], // Yellow battery icon
+            screen_width,
+            screen_height,
+        );
+
+        // Volume icon
+        self.simple_renderer.render_rect(
+            &mut encoder,
+            &view,
+            tray_x + 56.0,
+            tray_y,
+            24.0,
+            24.0,
+            [0.8, 0.8, 0.8, 1.0], // Gray volume icon
+            screen_width,
+            screen_height,
+        );
+
+        // Submit the command buffer
+        self.queue.submit(std::iter::once(encoder.finish()));
 
         // Present the frame
-        render_frame.present();
+        surface_texture.present();
 
         // Update GPU stats
         let render_time = frame_start.elapsed().as_secs_f64() * 1000.0;

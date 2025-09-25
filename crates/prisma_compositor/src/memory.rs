@@ -341,9 +341,10 @@ pub struct TexturePool {
 impl TexturePool {
     /// Create a new texture pool
     pub fn new(device: Arc<Device>, max_memory: usize) -> Self {
+        let device_clone = Arc::clone(&device);
         Self {
             device,
-            memory_pool: Arc::new(MemoryPool::new(Arc::clone(&device), max_memory)),
+            memory_pool: Arc::new(MemoryPool::new(device_clone, max_memory)),
             texture_cache: Arc::new(Mutex::new(HashMap::new())),
             texture_view_cache: Arc::new(Mutex::new(HashMap::new())),
             sampler_cache: Arc::new(Mutex::new(HashMap::new())),

@@ -12,8 +12,7 @@ use winit::{
 
 use prisma_compositor::{
     core::{Compositor, CompositorConfig},
-    ui::{UISystem, UIElement, UIElementType, UIRect},
-    window::WindowManager,
+    ui::{UISystem, UIElement, UIRect},
 };
 
 #[tokio::main]
@@ -25,7 +24,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("   Built with WGPU for maximum performance and efficiency");
 
     // Create event loop
-    let event_loop = EventLoop::new();
+    let event_loop = EventLoop::new()?;
 
     // Create main window
     let window = WindowBuilder::new()
