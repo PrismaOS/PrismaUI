@@ -287,7 +287,7 @@ pub trait AcrylicExt: Styled + Sized {
         self.bg(base_color.opacity(opacity))
             .border_1()
             .border_color(cx.theme().border.opacity(border_opacity))
-            .shadow_lg()
+            .shadow(vec![box_shadow(px(0.), px(8.), px(25.), px(0.), cx.theme().background.opacity(0.1))])
     }
 
     /// Apply glass effect (lighter acrylic for overlays)
@@ -298,7 +298,7 @@ pub trait AcrylicExt: Styled + Sized {
         self.bg(cx.theme().popover.opacity(0.8))
             .border_1()
             .border_color(cx.theme().border.opacity(0.3))
-            .shadow_lg()
+            .shadow(vec![box_shadow(px(0.), px(4.), px(15.), px(0.), cx.theme().background.opacity(0.15))])
     }
 
     /// Apply frosted glass effect for modals and overlays
@@ -309,7 +309,7 @@ pub trait AcrylicExt: Styled + Sized {
         self.bg(cx.theme().background.opacity(0.7))
             .border_1()
             .border_color(cx.theme().border.opacity(0.4))
-            .shadow_2xl()
+            .shadow(vec![box_shadow(px(0.), px(10.), px(30.), px(0.), cx.theme().background.opacity(0.2))])
     }
 
     /// Apply elevated acrylic for important UI elements
@@ -320,7 +320,7 @@ pub trait AcrylicExt: Styled + Sized {
         self.bg(cx.theme().background.opacity(0.95))
             .border_1()
             .border_color(cx.theme().border.opacity(0.5))
-            .shadow_2xl()
+            .shadow(vec![box_shadow(px(0.), px(12.), px(40.), px(0.), cx.theme().background.opacity(0.25))])
     }
 
     /// Apply subtle acrylic for background elements
@@ -331,7 +331,7 @@ pub trait AcrylicExt: Styled + Sized {
         self.bg(cx.theme().background.opacity(0.95))
             .border_1()
             .border_color(cx.theme().border.opacity(0.1))
-            .shadow_sm()
+            .shadow(vec![box_shadow(px(0.), px(2.), px(8.), px(0.), cx.theme().background.opacity(0.05))])
     }
 }
 

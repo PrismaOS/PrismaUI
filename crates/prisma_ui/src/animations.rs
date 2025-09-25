@@ -1,6 +1,5 @@
 /// Premium animations for PrismaUI components
 use gpui::Animation;
-use std::time::Duration;
 use std::time::Duration as StdDuration;
 
 pub struct PremiumAnimations;
