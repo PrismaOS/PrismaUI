@@ -401,140 +401,135 @@ impl Compositor {
         let screen_height = surface_config.height as f32;
         drop(surface_config);
 
-        // Render taskbar at bottom
-        self.simple_renderer.render_rect(
-            &mut encoder,
-            &view,
-            0.0,
-            screen_height - 48.0,
-            screen_width,
-            48.0,
-            [0.1, 0.1, 0.1, 0.95], // Semi-transparent dark taskbar
-            screen_width,
-            screen_height,
-        );
+        // Begin UI rendering pass
+        {
+            let mut ui_pass = self.simple_renderer.begin_ui_pass(&mut encoder, &view);
 
-        // Render sample windows
-        // Window 1 - Text Editor
-        self.simple_renderer.render_rect(
-            &mut encoder,
-            &view,
-            100.0,
-            100.0,
-            800.0,
-            600.0,
-            [0.95, 0.95, 0.95, 1.0], // Light gray window background
-            screen_width,
-            screen_height,
-        );
+            // Render taskbar at bottom
+            self.simple_renderer.render_rect_in_pass(
+                &mut ui_pass,
+                0.0,
+                screen_height - 48.0,
+                screen_width,
+                48.0,
+                [0.1, 0.1, 0.1, 0.95], // Semi-transparent dark taskbar
+                screen_width,
+                screen_height,
+            );
 
-        // Title bar for window 1
-        self.simple_renderer.render_rect(
-            &mut encoder,
-            &view,
-            100.0,
-            100.0,
-            800.0,
-            32.0,
-            [0.3, 0.5, 0.8, 1.0], // Blue title bar
-            screen_width,
-            screen_height,
-        );
+            // Render sample windows
+            // Window 1 - Text Editor
+            self.simple_renderer.render_rect_in_pass(
+                &mut ui_pass,
+                100.0,
+                100.0,
+                800.0,
+                600.0,
+                [0.95, 0.95, 0.95, 1.0], // Light gray window background
+                screen_width,
+                screen_height,
+            );
 
-        // Window 2 - File Manager
-        self.simple_renderer.render_rect(
-            &mut encoder,
-            &view,
-            200.0,
-            150.0,
-            700.0,
-            500.0,
-            [0.9, 0.9, 0.9, 1.0], // Light gray window background
-            screen_width,
-            screen_height,
-        );
+            // Title bar for window 1
+            self.simple_renderer.render_rect_in_pass(
+                &mut ui_pass,
+                100.0,
+                100.0,
+                800.0,
+                32.0,
+                [0.3, 0.5, 0.8, 1.0], // Blue title bar
+                screen_width,
+                screen_height,
+            );
 
-        // Title bar for window 2
-        self.simple_renderer.render_rect(
-            &mut encoder,
-            &view,
-            200.0,
-            150.0,
-            700.0,
-            32.0,
-            [0.2, 0.7, 0.4, 1.0], // Green title bar
-            screen_width,
-            screen_height,
-        );
+            // Window 2 - File Manager
+            self.simple_renderer.render_rect_in_pass(
+                &mut ui_pass,
+                200.0,
+                150.0,
+                700.0,
+                500.0,
+                [0.9, 0.9, 0.9, 1.0], // Light gray window background
+                screen_width,
+                screen_height,
+            );
 
-        // Window 3 - Terminal
-        self.simple_renderer.render_rect(
-            &mut encoder,
-            &view,
-            300.0,
-            200.0,
-            600.0,
-            400.0,
-            [0.05, 0.05, 0.05, 1.0], // Dark terminal background
-            screen_width,
-            screen_height,
-        );
+            // Title bar for window 2
+            self.simple_renderer.render_rect_in_pass(
+                &mut ui_pass,
+                200.0,
+                150.0,
+                700.0,
+                32.0,
+                [0.2, 0.7, 0.4, 1.0], // Green title bar
+                screen_width,
+                screen_height,
+            );
 
-        // Title bar for window 3
-        self.simple_renderer.render_rect(
-            &mut encoder,
-            &view,
-            300.0,
-            200.0,
-            600.0,
-            32.0,
-            [0.1, 0.1, 0.1, 1.0], // Dark title bar
-            screen_width,
-            screen_height,
-        );
+            // Window 3 - Terminal
+            self.simple_renderer.render_rect_in_pass(
+                &mut ui_pass,
+                300.0,
+                200.0,
+                600.0,
+                400.0,
+                [0.05, 0.05, 0.05, 1.0], // Dark terminal background
+                screen_width,
+                screen_height,
+            );
 
-        // Render system tray icons
-        let tray_x = screen_width - 200.0;
-        let tray_y = screen_height - 40.0;
+            // Title bar for window 3
+            self.simple_renderer.render_rect_in_pass(
+                &mut ui_pass,
+                300.0,
+                200.0,
+                600.0,
+                32.0,
+                [0.1, 0.1, 0.1, 1.0], // Dark title bar
+                screen_width,
+                screen_height,
+            );
 
-        // Network icon
-        self.simple_renderer.render_rect(
-            &mut encoder,
-            &view,
-            tray_x,
-            tray_y,
-            24.0,
-            24.0,
-            [0.0, 0.8, 0.0, 1.0], // Green network icon
-            screen_width,
-            screen_height,
-        );
+            // Render system tray icons
+            let tray_x = screen_width - 200.0;
+            let tray_y = screen_height - 40.0;
 
-        // Battery icon
-        self.simple_renderer.render_rect(
-            &mut encoder,
-            &view,
-            tray_x + 28.0,
-            tray_y,
-            24.0,
-            24.0,
-            [1.0, 0.8, 0.0, 1.0], // Yellow battery icon
-            screen_width,
-            screen_height,
-        );
+            // Network icon
+            self.simple_renderer.render_rect_in_pass(
+                &mut ui_pass,
+                tray_x,
+                tray_y,
+                24.0,
+                24.0,
+                [0.0, 0.8, 0.0, 1.0], // Green network icon
+                screen_width,
+                screen_height,
+            );
 
-        // Volume icon
-        self.simple_renderer.render_rect(
-            &mut encoder,
-            &view,
-            tray_x + 56.0,
-            tray_y,
-            24.0,
-            24.0,
-            [0.8, 0.8, 0.8, 1.0], // Gray volume icon
-            screen_width,
-            screen_height,
-        );
+            // Battery icon
+            self.simple_renderer.render_rect_in_pass(
+                &mut ui_pass,
+                tray_x + 28.0,
+                tray_y,
+                24.0,
+                24.0,
+                [1.0, 0.8, 0.0, 1.0], // Yellow battery icon
+                screen_width,
+                screen_height,
+            );
+
+            // Volume icon
+            self.simple_renderer.render_rect_in_pass(
+                &mut ui_pass,
+                tray_x + 56.0,
+                tray_y,
+                24.0,
+                24.0,
+                [0.8, 0.8, 0.8, 1.0], // Gray volume icon
+                screen_width,
+                screen_height,
+            );
+        } // UI render pass ends here
 
         // Submit the command buffer
         self.queue.submit(std::iter::once(encoder.finish()));

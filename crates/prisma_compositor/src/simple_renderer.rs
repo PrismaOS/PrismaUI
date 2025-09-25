@@ -158,9 +158,9 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     }
 
     /// Render a rectangle within an existing render pass
-    pub fn render_rect_in_pass(
-        &self,
-        render_pass: &mut wgpu::RenderPass,
+    pub fn render_rect_in_pass<'a>(
+        &'a self,
+        render_pass: &mut wgpu::RenderPass<'a>,
         x: f32,
         y: f32,
         width: f32,
