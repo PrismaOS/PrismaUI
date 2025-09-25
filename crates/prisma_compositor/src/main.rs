@@ -79,11 +79,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 async fn create_desktop_ui(compositor: &Arc<Compositor>) -> Result<(), Box<dyn std::error::Error>> {
     let ui_system = compositor.window_manager.read().unwrap().get_ui_system();
 
-    // Create desktop layers
+    // Create desktop layers with proper z-ordering
     let wallpaper_layer = ui_system.create_layer("Wallpaper".to_string());
     let desktop_layer = ui_system.create_layer("Desktop".to_string());
     let windows_layer = ui_system.create_layer("Windows".to_string());
     let taskbar_layer = ui_system.create_layer("Taskbar".to_string());
+
+    // Set z-index for proper layering (lower = background, higher = foreground)
+    ui_system.set_layer_z_index(wallpaper_layer, -100);  // Background
+    ui_system.set_layer_z_index(desktop_layer, -50);     // Desktop icons
+    ui_system.set_layer_z_index(windows_layer, 0);       // Windows
+    ui_system.set_layer_z_index(taskbar_layer, 100);     // Always on top
 
     // Create wallpaper
     let wallpaper = UIElement::rect(

@@ -290,6 +290,15 @@ impl UISystem {
         layer_id
     }
 
+    /// Set the z-index of a layer
+    pub fn set_layer_z_index(&self, layer_id: u64, z_index: i32) {
+        if let Ok(mut layers) = self.layers.write() {
+            if let Some(layer) = layers.get_mut(&layer_id) {
+                layer.z_index = z_index;
+            }
+        }
+    }
+
     /// Add element to a layer
     pub fn add_element_to_layer(&self, layer_id: u64, element: UIElement) {
         if let Ok(mut layers) = self.layers.write() {
@@ -377,17 +386,22 @@ impl UISystem {
         }
     }
 
-    /// Get layers in render order
+    /// Get layers in render order (sorted by z_index)
     pub fn get_layers_for_rendering(&self) -> Vec<UILayer> {
         let layers = self.layers.read().unwrap();
         let layer_order = self.layer_order.read().unwrap();
 
-        layer_order
+        let mut render_layers: Vec<UILayer> = layer_order
             .iter()
             .filter_map(|&id| layers.get(&id))
             .filter(|layer| layer.visible)
             .cloned()
-            .collect()
+            .collect();
+
+        // Sort layers by z_index to ensure proper rendering order
+        // Lower z_index renders first (background), higher z_index renders last (foreground)
+        render_layers.sort_by_key(|layer| layer.z_index);
+        render_layers
     }
 
     /// Update screen size
