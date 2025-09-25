@@ -139,11 +139,28 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         }
     }
 
-    /// Render a rectangle
-    pub fn render_rect(
+    /// Begin a UI render pass - call this once per frame
+    pub fn begin_ui_pass<'a>(&'a self, encoder: &'a mut CommandEncoder, target: &'a TextureView) -> wgpu::RenderPass<'a> {
+        encoder.begin_render_pass(&RenderPassDescriptor {
+            label: Some("UI Render Pass"),
+            color_attachments: &[Some(RenderPassColorAttachment {
+                view: target,
+                resolve_target: None,
+                ops: Operations {
+                    load: LoadOp::Load, // Don't clear, preserve existing content
+                    store: StoreOp::Store,
+                },
+            })],
+            depth_stencil_attachment: None,
+            occlusion_query_set: None,
+            timestamp_writes: None,
+        })
+    }
+
+    /// Render a rectangle within an existing render pass
+    pub fn render_rect_in_pass(
         &self,
-        encoder: &mut CommandEncoder,
-        target: &TextureView,
+        render_pass: &mut wgpu::RenderPass,
         x: f32,
         y: f32,
         width: f32,
@@ -172,22 +189,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         self.queue.write_buffer(&self.vertex_buffer, 0, bytemuck::cast_slice(&vertices));
         self.queue.write_buffer(&self.index_buffer, 0, bytemuck::cast_slice(&indices));
 
-        // Render
-        let mut render_pass = encoder.begin_render_pass(&RenderPassDescriptor {
-            label: Some("Simple Rect Render Pass"),
-            color_attachments: &[Some(RenderPassColorAttachment {
-                view: target,
-                resolve_target: None,
-                ops: Operations {
-                    load: LoadOp::Load, // Don't clear, preserve existing content
-                    store: StoreOp::Store,
-                },
-            })],
-            depth_stencil_attachment: None,
-            occlusion_query_set: None,
-            timestamp_writes: None,
-        });
-
+        // Set pipeline and buffers
         render_pass.set_pipeline(&self.render_pipeline);
         render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
         render_pass.set_index_buffer(self.index_buffer.slice(..), IndexFormat::Uint16);
