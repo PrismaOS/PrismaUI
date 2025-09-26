@@ -91,13 +91,24 @@ async fn create_desktop_ui(compositor: &Arc<Compositor>) -> Result<(), Box<dyn s
     ui_system.set_layer_z_index(windows_layer, 0);       // Windows
     ui_system.set_layer_z_index(taskbar_layer, 100);     // Always on top
 
-    // Create wallpaper
-    let wallpaper = UIElement::rect(
-        1,
-        UIRect::new(0.0, 0.0, 1920.0, 1080.0),
-        [0.1, 0.2, 0.3, 1.0], // Dark blue gradient-like background
+    // Don't add a wallpaper element - the clear background serves as wallpaper
+    // Adding a full-screen element would cover all other UI elements
+
+    // Add a simple test rectangle to verify rendering works
+    let test_rect = UIElement::rect(
+        999,
+        UIRect::new(100.0, 100.0, 200.0, 100.0), // Large, obvious rectangle
+        [1.0, 0.0, 0.0, 1.0], // Bright red
     );
-    ui_system.add_element_to_layer(wallpaper_layer, wallpaper);
+    ui_system.add_element_to_layer(windows_layer, test_rect);
+
+    // Add another test rectangle in a different position
+    let test_rect2 = UIElement::rect(
+        998,
+        UIRect::new(400.0, 300.0, 150.0, 150.0), // Square rectangle
+        [0.0, 1.0, 0.0, 1.0], // Bright green
+    );
+    ui_system.add_element_to_layer(windows_layer, test_rect2);
 
     // Create taskbar
     create_taskbar(&ui_system, taskbar_layer)?;

@@ -37,10 +37,10 @@ impl SimpleVertex {
 /// Simple immediate-mode renderer
 pub struct SimpleRenderer {
     device: Arc<Device>,
-    queue: Arc<Queue>,
-    render_pipeline: RenderPipeline,
-    vertex_buffer: Buffer,
-    index_buffer: Buffer,
+    pub queue: Arc<Queue>,
+    pub render_pipeline: RenderPipeline,
+    pub vertex_buffer: Buffer,
+    pub index_buffer: Buffer,
 }
 
 impl SimpleRenderer {
@@ -169,11 +169,66 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         screen_width: f32,
         screen_height: f32,
     ) {
-        // Convert screen coordinates to NDC
-        let x1 = (x / screen_width) * 2.0 - 1.0;
-        let y1 = -((y / screen_height) * 2.0 - 1.0); // Flip Y
-        let x2 = ((x + width) / screen_width) * 2.0 - 1.0;
-        let y2 = -(((y + height) / screen_height) * 2.0 - 1.0); // Flip Y
+        // Convert screen coordinates to NDC - COMPLETELY REWRITTEN
+        // Standard OpenGL/WGPU NDC conversion
+        let x1 = (x / screen_width) * 2.0 - 1.0;                    // Left edge
+        let x2 = ((x + width) / screen_width) * 2.0 - 1.0;          // Right edge
+        let y1 = -((y / screen_height) * 2.0 - 1.0);                // Top edge (flip Y)
+        let y2 = -(((y + height) / screen_height) * 2.0 - 1.0);     // Bottom edge (flip Y)
+
+        println!("       Screen: ({}, {}, {}x{}) -> NDC: ({:.2}, {:.2}) to ({:.2}, {:.2})",
+            x, y, width, height, x1, y1, x2, y2);
+
+        // Create rectangle as two triangles (6 vertices) - NO INDICES
+        let triangles = [
+            // First triangle (top-left, top-right, bottom-left)
+            SimpleVertex { position: [x1, y1], color }, // Top-left
+            SimpleVertex { position: [x2, y1], color }, // Top-right
+            SimpleVertex { position: [x1, y2], color }, // Bottom-left
+            // Second triangle (top-right, bottom-right, bottom-left)
+            SimpleVertex { position: [x2, y1], color }, // Top-right
+            SimpleVertex { position: [x2, y2], color }, // Bottom-right
+            SimpleVertex { position: [x1, y2], color }, // Bottom-left
+        ];
+
+        println!("       Triangle vertices: TL({:.2},{:.2}) TR({:.2},{:.2}) BL({:.2},{:.2})",
+            x1, y1, x2, y1, x1, y2);
+        println!("       Color: [{:.2}, {:.2}, {:.2}, {:.2}]", color[0], color[1], color[2], color[3]);
+
+        // Upload triangle data
+        self.queue.write_buffer(&self.vertex_buffer, 0, bytemuck::cast_slice(&triangles));
+
+        // Set buffers and draw as triangles (no indices)
+        render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
+
+        println!("       Issuing draw(0..6, 0..1) - two triangles");
+        render_pass.draw(0..6, 0..1);
+        println!("       Draw call completed");
+    }
+
+    /// Render a rectangle in its own render pass (preserves existing content)
+    pub fn render_rect(
+        &self,
+        encoder: &mut CommandEncoder,
+        target: &TextureView,
+        x: f32,
+        y: f32,
+        width: f32,
+        height: f32,
+        color: [f32; 4],
+        screen_width: f32,
+        screen_height: f32,
+    ) {
+        // Convert screen coordinates to NDC - COMPLETELY REWRITTEN
+        // Standard OpenGL/WGPU NDC conversion
+        let x1 = (x / screen_width) * 2.0 - 1.0;                    // Left edge
+        let x2 = ((x + width) / screen_width) * 2.0 - 1.0;          // Right edge
+        let y1 = -((y / screen_height) * 2.0 - 1.0);                // Top edge (flip Y)
+        let y2 = -(((y + height) / screen_height) * 2.0 - 1.0);     // Bottom edge (flip Y)
+
+        // Debug output for coordinate conversion
+        println!("       Screen: ({}, {}, {}x{}) -> NDC: ({:.2}, {:.2}) to ({:.2}, {:.2})",
+            x, y, width, height, x1, y1, x2, y2);
 
         // Create vertices for rectangle
         let vertices = [
@@ -185,14 +240,32 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 
         let indices: [u16; 6] = [0, 1, 2, 0, 2, 3];
 
-        // Upload vertex data
+        // Upload vertex data to buffer
         self.queue.write_buffer(&self.vertex_buffer, 0, bytemuck::cast_slice(&vertices));
         self.queue.write_buffer(&self.index_buffer, 0, bytemuck::cast_slice(&indices));
+
+        // Create render pass that preserves existing content
+        let mut render_pass = encoder.begin_render_pass(&RenderPassDescriptor {
+            label: Some("Rectangle Render Pass"),
+            color_attachments: &[Some(RenderPassColorAttachment {
+                view: target,
+                resolve_target: None,
+                ops: Operations {
+                    load: LoadOp::Load, // Preserve existing content
+                    store: StoreOp::Store,
+                },
+            })],
+            depth_stencil_attachment: None,
+            occlusion_query_set: None,
+            timestamp_writes: None,
+        });
 
         // Set pipeline and buffers
         render_pass.set_pipeline(&self.render_pipeline);
         render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
         render_pass.set_index_buffer(self.index_buffer.slice(..), IndexFormat::Uint16);
+
+        // Draw the rectangle
         render_pass.draw_indexed(0..6, 0, 0..1);
     }
 }

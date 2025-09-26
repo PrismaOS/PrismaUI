@@ -372,54 +372,92 @@ impl Compositor {
             label: Some("Render Encoder"),
         });
 
-        // Clear the screen with blue background
-        {
-            let _render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("Clear Pass"),
-                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: &view,
-                    resolve_target: None,
-                    ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(wgpu::Color {
-                            r: 0.1,
-                            g: 0.2,
-                            b: 0.3,
-                            a: 1.0,
-                        }),
-                        store: wgpu::StoreOp::Store,
-                    },
-                })],
-                depth_stencil_attachment: None,
-                occlusion_query_set: None,
-                timestamp_writes: None,
-            });
-        }
-
         // Get screen size
         let surface_config = self.surface_config.read().unwrap();
         let screen_width = surface_config.width as f32;
         let screen_height = surface_config.height as f32;
         drop(surface_config);
 
-        // Begin UI rendering pass
+        // Get UI layers from the window manager's UI system
+        let window_manager = self.window_manager.read().unwrap();
+        let ui_system = window_manager.get_ui_system();
+        let layers = ui_system.get_layers_for_rendering();
+
+        println!("🎨 Testing coordinate conversion...");
+
+        // Let's figure out what screen coordinates should produce our working NDC values
+        // Working NDC: (-0.6, -0.3) to (0.4, 0.5)
+        // Reverse calculate what screen coords these should be:
+
+        // For x: ndc = (screen / screen_width) * 2.0 - 1.0
+        // So: screen = (ndc + 1.0) * screen_width / 2.0
+        let target_x1_screen = (-0.6 + 1.0) * screen_width / 2.0;  // Should be left edge
+        let target_x2_screen = (0.4 + 1.0) * screen_width / 2.0;   // Should be right edge
+
+        // For y: ndc = -((screen / screen_height) * 2.0 - 1.0)
+        // So: screen = screen_height * (1.0 + ndc) / 2.0
+        let target_y1_screen = screen_height * (1.0 + (-0.3)) / 2.0;  // Should be top edge
+        let target_y2_screen = screen_height * (1.0 + 0.5) / 2.0;     // Should be bottom edge
+
+        println!("   Working NDC (-0.6,-0.3) to (0.4,0.5) should correspond to screen:");
+        println!("   X: {:.0} to {:.0} (width: {:.0})", target_x1_screen, target_x2_screen, target_x2_screen - target_x1_screen);
+        println!("   Y: {:.0} to {:.0} (height: {:.0})", target_y1_screen, target_y2_screen, target_y2_screen - target_y1_screen);
+
+        // Now test converting one of our UI elements
+        let test_elem_x = 100.0;
+        let test_elem_y = 100.0;
+        let test_elem_w = 800.0;
+        let test_elem_h = 600.0;
+
+        let converted_x1 = (test_elem_x / screen_width) * 2.0 - 1.0;
+        let converted_y1 = -((test_elem_y / screen_height) * 2.0 - 1.0);
+        let converted_x2 = ((test_elem_x + test_elem_w) / screen_width) * 2.0 - 1.0;
+        let converted_y2 = -(((test_elem_y + test_elem_h) / screen_height) * 2.0 - 1.0);
+
+        println!("   UI Element: ({}, {}) {}x{} converts to NDC: ({:.3},{:.3}) to ({:.3},{:.3})",
+            test_elem_x, test_elem_y, test_elem_w, test_elem_h, converted_x1, converted_y1, converted_x2, converted_y2);
+
+        println!("🎨 Rendering {} layers with FIXED coordinate conversion", layers.len());
+        println!("   Render order (by z-index):");
+        for (idx, layer) in layers.iter().enumerate() {
+            println!("     {} - '{}' (z: {})", idx, layer.name, layer.z_index);
+        }
+
+        // Create ONE render pass for ALL UI elements
         {
-            let mut ui_pass = self.simple_renderer.begin_ui_pass(&mut encoder, &view);
+            let mut ui_pass = encoder.begin_render_pass(&RenderPassDescriptor {
+                label: Some("UI Render Pass"),
+                color_attachments: &[Some(RenderPassColorAttachment {
+                    view: &view,
+                    resolve_target: None,
+                    ops: Operations {
+                        // Clear background first
+                        load: LoadOp::Clear(Color {
+                            r: 0.1,
+                            g: 0.2,
+                            b: 0.3,
+                            a: 1.0,
+                        }),
+                        store: StoreOp::Store,
+                    },
+                })],
+                depth_stencil_attachment: None,
+                occlusion_query_set: None,
+                timestamp_writes: None,
+            });
 
-            // Get UI layers from the window manager's UI system
-            let window_manager = self.window_manager.read().unwrap();
-            let ui_system = window_manager.get_ui_system();
-            let layers = ui_system.get_layers_for_rendering();
+            // Set the render pipeline once
+            ui_pass.set_pipeline(&self.simple_renderer.render_pipeline);
 
-            println!("🎨 Rendering {} layers", layers.len());
-
-            // Render all UI elements from all layers in order
+            // Render all layers in the same render pass
             for (layer_idx, layer) in layers.iter().enumerate() {
                 if !layer.visible {
                     println!("   Layer {} '{}' is not visible, skipping", layer_idx, layer.name);
                     continue;
                 }
 
-                println!("   Layer {} '{}' has {} elements", layer_idx, layer.name, layer.elements.len());
+                println!("   Rendering Layer {} '{}' has {} elements (z-index: {})",
+                    layer_idx, layer.name, layer.elements.len(), layer.z_index);
 
                 for (elem_idx, element) in layer.elements.iter().enumerate() {
                     println!("     Element {} type: {:?}, rect: {:?}, color: {:?}",
@@ -457,10 +495,14 @@ impl Compositor {
                     }
                 }
             }
-        } // UI render pass ends here
+        } // Single render pass ends here
+
+        println!("✅ UI rendering completed with fixed coordinate conversion");
 
         // Submit the command buffer
-        self.queue.submit(std::iter::once(encoder.finish()));
+        let command_buffer = encoder.finish();
+        println!("📤 Submitting command buffer to GPU...");
+        self.queue.submit(std::iter::once(command_buffer));
 
         // Present the frame
         surface_texture.present();
