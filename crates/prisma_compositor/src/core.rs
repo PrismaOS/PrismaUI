@@ -184,16 +184,18 @@ impl Context {
         self.size.width as f32 / self.size.height as f32
     }
 
-    /// Create orthographic projection matrix for 2D UI
+    /// Create orthographic projection matrix for 2D UI (Y down, X right)
     pub fn orthographic_projection(&self) -> [[f32; 4]; 4] {
         let width = self.size.width as f32;
         let height = self.size.height as f32;
 
+        // Standard orthographic projection for 2D UI
+        // Maps (0,0) to (-1,1) and (width,height) to (1,-1)
         [
             [2.0 / width, 0.0, 0.0, 0.0],
             [0.0, -2.0 / height, 0.0, 0.0],
-            [0.0, 0.0, 1.0, 0.0],
-            [-1.0, 1.0, 0.0, 1.0],
+            [0.0, 0.0, 0.5, 0.0],
+            [-1.0, 1.0, 0.5, 1.0],
         ]
     }
 

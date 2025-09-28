@@ -292,9 +292,15 @@ impl Renderer {
             source: wgpu::ShaderSource::Wgsl(include_str!("shaders/gradient.wgsl").into()),
         });
 
-        // Create render pipeline layout
-        let pipeline_layout = device.device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-            label: Some("Render Pipeline Layout"),
+        // Create pipeline layouts - separate for solid and textured rendering
+        let solid_pipeline_layout = device.device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("Solid Pipeline Layout"),
+            bind_group_layouts: &[&uniform_bind_group_layout],
+            push_constant_ranges: &[],
+        });
+
+        let textured_pipeline_layout = device.device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("Textured Pipeline Layout"),
             bind_group_layouts: &[&uniform_bind_group_layout, &texture_bind_group_layout],
             push_constant_ranges: &[],
         });
@@ -302,7 +308,7 @@ impl Renderer {
         // Create render pipelines
         let solid_pipeline = Self::create_render_pipeline(
             &device.device,
-            &pipeline_layout,
+            &solid_pipeline_layout,
             &solid_shader,
             surface_format,
             "Solid Pipeline",
@@ -310,7 +316,7 @@ impl Renderer {
 
         let textured_pipeline = Self::create_render_pipeline(
             &device.device,
-            &pipeline_layout,
+            &textured_pipeline_layout,
             &textured_shader,
             surface_format,
             "Textured Pipeline",
@@ -318,7 +324,7 @@ impl Renderer {
 
         let text_pipeline = Self::create_render_pipeline(
             &device.device,
-            &pipeline_layout,
+            &textured_pipeline_layout,
             &text_shader,
             surface_format,
             "Text Pipeline",
@@ -326,7 +332,7 @@ impl Renderer {
 
         let rounded_rect_pipeline = Self::create_render_pipeline(
             &device.device,
-            &pipeline_layout,
+            &solid_pipeline_layout,
             &rounded_rect_shader,
             surface_format,
             "Rounded Rect Pipeline",
@@ -334,7 +340,7 @@ impl Renderer {
 
         let gradient_pipeline = Self::create_render_pipeline(
             &device.device,
-            &pipeline_layout,
+            &solid_pipeline_layout,
             &gradient_shader,
             surface_format,
             "Gradient Pipeline",
@@ -594,7 +600,7 @@ impl Renderer {
     }
 
     /// Finish frame and render all batches
-    pub fn end_frame(&mut self, _render_pass: &mut RenderPass<'_>, _device: &Device) -> anyhow::Result<()> {
+    pub fn end_frame<'a>(&'a mut self, render_pass: &mut RenderPass<'a>, device: &Device) -> anyhow::Result<()> {
         // Finalize current batch
         if let Some(batch) = self.current_batch.take() {
             if !batch.is_empty() {
@@ -622,11 +628,27 @@ impl Renderer {
             return Ok(());
         }
 
-        // TODO: Actual GPU rendering implementation
-        // For now, just update stats
-        self.stats.draw_calls = self.batches.len() as u32;
+        // Write vertex and index data to GPU buffers
+        self.vertex_buffer.write(&device.queue, &all_vertices);
+        self.index_buffer.write(&device.queue, &all_indices);
+
+        // Render all batches using the solid pipeline for now
+        render_pass.set_pipeline(&self.solid_pipeline);
+        render_pass.set_bind_group(0, &self.uniform_bind_group, &[]);
+        render_pass.set_vertex_buffer(0, self.vertex_buffer.slice());
+        render_pass.set_index_buffer(self.index_buffer.slice(), wgpu::IndexFormat::Uint32);
+
+        // Draw all triangles in one draw call for maximum efficiency
+        let num_indices = all_indices.len() as u32;
+        render_pass.draw_indexed(0..num_indices, 0, 0..1);
+
+        // Update stats
+        self.stats.draw_calls = 1; // We batch everything into one draw call
         self.stats.vertices_rendered = all_vertices.len() as u32;
         self.stats.triangles_rendered = all_indices.len() as u32 / 3;
+
+        // Clear batches for next frame
+        self.batches.clear();
 
         Ok(())
     }

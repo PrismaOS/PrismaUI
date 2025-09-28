@@ -9,10 +9,10 @@ use winit::{
 use anyhow::Result;
 
 use crate::{
-    core::{Context, Surface},
+    core::Context,
     renderer::Renderer,
     window::{WindowManager, WindowId},
-    ui::{UITree, Container, Button, Text, Rectangle, LayoutDirection},
+    ui::{UITree, Container, Button, Text, Rectangle, LayoutDirection, UIElement, LayoutConstraints},
     events::{EventDispatcher, Event, InputEvent, MouseButton, ButtonState, Modifiers},
     text::TextRenderer,
     assets::AssetManager,
@@ -63,7 +63,6 @@ pub struct Compositor {
     // Core rendering
     context: Context,
     renderer: Renderer,
-    surface: Option<Surface>,
 
     // UI and window management
     window_manager: WindowManager,
@@ -80,6 +79,7 @@ pub struct Compositor {
     last_frame_time: Instant,
     frame_count: u64,
     performance_metrics: PerformanceMetrics,
+    cursor_position: crate::geometry::Point, // Track cursor position
 
     // Demo content (TODO: remove when porting actual UI)
     demo_window_id: Option<WindowId>,
@@ -103,7 +103,6 @@ impl Compositor {
         Ok(Self {
             context,
             renderer,
-            surface: None,
             window_manager,
             event_dispatcher,
             desktop_ui,
@@ -114,26 +113,185 @@ impl Compositor {
             last_frame_time: Instant::now(),
             frame_count: 0,
             performance_metrics: PerformanceMetrics::default(),
+            cursor_position: crate::geometry::Point::new(0.0, 0.0),
             demo_window_id: None,
         })
     }
 
     /// Run the compositor event loop
-    pub fn run(self) -> Result<()> {
-        // TODO: Implement proper winit event loop
-        // For now, just create the event loop structure
-        let _event_loop = EventLoop::new()?;
+    pub fn run(mut self) -> Result<()> {
+        use winit::{
+            event::{Event as WinitEvent, WindowEvent},
+            event_loop::{ControlFlow, EventLoopWindowTarget},
+            window::WindowBuilder,
+        };
 
-        println!("PrismaUI Compositor initialized successfully!");
-        println!("TODO: Implement full event loop integration");
+        let event_loop = EventLoop::new()?;
+        let window = Arc::new(WindowBuilder::new()
+            .with_title(&self.config.title)
+            .with_inner_size(self.config.size)
+            .with_visible(true)
+            .build(&event_loop)?);
+
+        // Initialize compositor with the window
+        self.initialize(window.clone())?;
+
+        println!("🖥️  Window created and compositor ready!");
+        println!("🎮 Starting event loop...");
+
+        let mut last_update = std::time::Instant::now();
+        let target_frame_time = Duration::from_secs_f32(1.0 / self.config.target_fps as f32);
+
+        event_loop.run(move |event, target: &EventLoopWindowTarget<()>| {
+            target.set_control_flow(ControlFlow::Poll);
+
+            match event {
+                WinitEvent::WindowEvent { window_id, event } if window_id == window.id() => {
+                    match event {
+                        WindowEvent::CloseRequested => {
+                            println!("👋 Close requested - shutting down compositor");
+                            target.exit();
+                        }
+                        WindowEvent::Resized(physical_size) => {
+                            if physical_size.width > 0 && physical_size.height > 0 {
+                                self.resize(physical_size);
+                            }
+                        }
+                        WindowEvent::ScaleFactorChanged { .. } => {
+                            let size = window.inner_size();
+                            self.resize(size);
+                        }
+                        WindowEvent::MouseInput { button, state, .. } => {
+                            let input_event = InputEvent::MouseButton {
+                                button: self.convert_mouse_button(button),
+                                state: self.convert_button_state(state),
+                                position: self.cursor_position,
+                                modifiers: crate::events::Modifiers::new(),
+                            };
+                            self.handle_input_event(input_event);
+                        }
+                        WindowEvent::CursorMoved { position, .. } => {
+                            let new_position = crate::geometry::Point::new(position.x as f32, position.y as f32);
+                            let delta = new_position - self.cursor_position;
+                            self.cursor_position = new_position;
+
+                            let input_event = InputEvent::MouseMove {
+                                position: new_position,
+                                delta,
+                            };
+                            self.handle_input_event(input_event);
+                        }
+                        WindowEvent::MouseWheel { delta, .. } => {
+                            let scroll_delta = match delta {
+                                winit::event::MouseScrollDelta::LineDelta(x, y) => {
+                                    crate::geometry::Point::new(x, y)
+                                }
+                                winit::event::MouseScrollDelta::PixelDelta(pos) => {
+                                    crate::geometry::Point::new(pos.x as f32, pos.y as f32)
+                                }
+                            };
+                            let input_event = InputEvent::MouseWheel {
+                                delta: scroll_delta,
+                                position: self.cursor_position,
+                                modifiers: crate::events::Modifiers::new(),
+                            };
+                            self.handle_input_event(input_event);
+                        }
+                        WindowEvent::KeyboardInput { event, .. } => {
+                            if let Some(text) = &event.text {
+                                let input_event = InputEvent::TextInput {
+                                    text: text.to_string(),
+                                };
+                                self.handle_input_event(input_event);
+                            } else {
+                                // Handle key press/release
+                                let key = match event.logical_key {
+                                    winit::keyboard::Key::Named(named_key) => {
+                                        match named_key {
+                                            winit::keyboard::NamedKey::Escape => crate::events::Key::Escape,
+                                            winit::keyboard::NamedKey::Tab => crate::events::Key::Tab,
+                                            winit::keyboard::NamedKey::Enter => crate::events::Key::Enter,
+                                            winit::keyboard::NamedKey::Space => crate::events::Key::Space,
+                                            winit::keyboard::NamedKey::Backspace => crate::events::Key::Backspace,
+                                            winit::keyboard::NamedKey::Delete => crate::events::Key::Delete,
+                                            winit::keyboard::NamedKey::ArrowUp => crate::events::Key::ArrowUp,
+                                            winit::keyboard::NamedKey::ArrowDown => crate::events::Key::ArrowDown,
+                                            winit::keyboard::NamedKey::ArrowLeft => crate::events::Key::ArrowLeft,
+                                            winit::keyboard::NamedKey::ArrowRight => crate::events::Key::ArrowRight,
+                                            winit::keyboard::NamedKey::Home => crate::events::Key::Home,
+                                            winit::keyboard::NamedKey::End => crate::events::Key::End,
+                                            winit::keyboard::NamedKey::PageUp => crate::events::Key::PageUp,
+                                            winit::keyboard::NamedKey::PageDown => crate::events::Key::PageDown,
+                                            winit::keyboard::NamedKey::F1 => crate::events::Key::F1,
+                                            winit::keyboard::NamedKey::F2 => crate::events::Key::F2,
+                                            winit::keyboard::NamedKey::F3 => crate::events::Key::F3,
+                                            winit::keyboard::NamedKey::F4 => crate::events::Key::F4,
+                                            winit::keyboard::NamedKey::F5 => crate::events::Key::F5,
+                                            winit::keyboard::NamedKey::F6 => crate::events::Key::F6,
+                                            winit::keyboard::NamedKey::F7 => crate::events::Key::F7,
+                                            winit::keyboard::NamedKey::F8 => crate::events::Key::F8,
+                                            winit::keyboard::NamedKey::F9 => crate::events::Key::F9,
+                                            winit::keyboard::NamedKey::F10 => crate::events::Key::F10,
+                                            winit::keyboard::NamedKey::F11 => crate::events::Key::F11,
+                                            winit::keyboard::NamedKey::F12 => crate::events::Key::F12,
+                                            _ => crate::events::Key::Unknown,
+                                        }
+                                    }
+                                    winit::keyboard::Key::Character(ch) => {
+                                        crate::events::Key::Character(ch.to_string())
+                                    }
+                                    _ => crate::events::Key::Unknown,
+                                };
+
+                                let input_event = InputEvent::Keyboard {
+                                    key,
+                                    state: self.convert_button_state(event.state),
+                                    modifiers: crate::events::Modifiers::new(), // TODO: Get actual modifiers
+                                };
+                                self.handle_input_event(input_event);
+                            }
+                        }
+                        WindowEvent::RedrawRequested => {
+                            let now = std::time::Instant::now();
+                            if now.duration_since(last_update) >= target_frame_time || !self.config.vsync {
+                                self.update();
+                                if let Err(e) = self.render() {
+                                    eprintln!("Render error: {}", e);
+                                }
+                                last_update = now;
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+                WinitEvent::AboutToWait => {
+                    // Request redraw
+                    window.request_redraw();
+                }
+                WinitEvent::DeviceEvent { .. } => {
+                    // Handle device events if needed
+                }
+                _ => {}
+            }
+        })?;
 
         Ok(())
     }
 
     /// Initialize after window creation
-    fn initialize(&mut self, _window: Arc<WinitWindow>) -> Result<()> {
-        // TODO: Create surface
-        // self.context.create_surface(window)?;
+    fn initialize(&mut self, window: Arc<WinitWindow>) -> Result<()> {
+        // Create surface using the context
+        self.context.create_surface(window)?;
+
+        // Get the surface format for the renderer
+        let surface_format = if let Some(ref surface) = self.context.surface {
+            surface.config.format
+        } else {
+            wgpu::TextureFormat::Bgra8UnormSrgb
+        };
+
+        // Update renderer with correct surface format
+        self.renderer = crate::renderer::Renderer::new(&self.context.device, surface_format)?;
 
         // Create desktop UI
         self.create_desktop_ui();
@@ -145,25 +303,62 @@ impl Compositor {
         self.asset_manager.preload_ui_assets(&self.context.device)?;
 
         self.running = true;
+        println!("✅ Surface created and compositor fully initialized!");
         Ok(())
     }
 
     /// Create the desktop UI (taskbar, desktop icons, etc.)
     fn create_desktop_ui(&mut self) {
-        // Create a simple taskbar for now
+
+        // Create a simple taskbar for now with fixed height at bottom
         let mut taskbar = Container::new("taskbar".to_string())
             .with_direction(LayoutDirection::Horizontal);
 
-        // Add some taskbar buttons
-        let start_button = Button::new("start_button".to_string(), "Start".to_string())
+        // Set taskbar constraints - full width, 48px height, positioned at bottom
+        taskbar.layout_mut().constraints = LayoutConstraints {
+            preferred_size: Some(Size::new(self.context.size.width as f32, 48.0)),
+            min_size: Size::new(0.0, 48.0),
+            max_size: Size::new(f32::INFINITY, 48.0),
+            flex_grow: 0.0,
+            flex_shrink: 0.0,
+            aspect_ratio: None,
+        };
+
+        // Add some taskbar buttons with fixed sizes
+        let mut start_button = Button::new("start_button".to_string(), "Start".to_string())
             .with_colors(
                 Color::from_hex("#0078d4").unwrap_or(Color::BLUE),
                 Color::from_hex("#106ebe").unwrap_or(Color::BLUE),
                 Color::from_hex("#005a9e").unwrap_or(Color::BLUE),
             );
+        start_button.layout_mut().constraints = LayoutConstraints {
+            preferred_size: Some(Size::new(80.0, 40.0)),
+            min_size: Size::new(60.0, 32.0),
+            max_size: Size::new(100.0, 48.0),
+            flex_grow: 0.0,
+            flex_shrink: 0.0,
+            aspect_ratio: None,
+        };
 
-        let file_manager_button = Button::new("file_manager_button".to_string(), "Files".to_string());
-        let terminal_button = Button::new("terminal_button".to_string(), "Terminal".to_string());
+        let mut file_manager_button = Button::new("file_manager_button".to_string(), "Files".to_string());
+        file_manager_button.layout_mut().constraints = LayoutConstraints {
+            preferred_size: Some(Size::new(80.0, 40.0)),
+            min_size: Size::new(60.0, 32.0),
+            max_size: Size::new(100.0, 48.0),
+            flex_grow: 0.0,
+            flex_shrink: 0.0,
+            aspect_ratio: None,
+        };
+
+        let mut terminal_button = Button::new("terminal_button".to_string(), "Terminal".to_string());
+        terminal_button.layout_mut().constraints = LayoutConstraints {
+            preferred_size: Some(Size::new(80.0, 40.0)),
+            min_size: Size::new(60.0, 32.0),
+            max_size: Size::new(100.0, 48.0),
+            flex_grow: 0.0,
+            flex_shrink: 0.0,
+            aspect_ratio: None,
+        };
 
         taskbar.add_child(Box::new(start_button));
         taskbar.add_child(Box::new(file_manager_button));
@@ -173,9 +368,27 @@ impl Compositor {
         let mut desktop = Container::new("desktop".to_string())
             .with_direction(LayoutDirection::Stack);
 
-        // Add wallpaper background
-        let wallpaper = Rectangle::new("wallpaper".to_string())
+        // Desktop takes full screen
+        desktop.layout_mut().constraints = LayoutConstraints {
+            preferred_size: Some(Size::new(self.context.size.width as f32, self.context.size.height as f32)),
+            min_size: Size::new(0.0, 0.0),
+            max_size: Size::new(f32::INFINITY, f32::INFINITY),
+            flex_grow: 1.0,
+            flex_shrink: 0.0,
+            aspect_ratio: None,
+        };
+
+        // Add wallpaper background - full screen
+        let mut wallpaper = Rectangle::new("wallpaper".to_string())
             .with_color(Color::from_hex("#1e3a8a").unwrap_or(Color::BLUE));
+        wallpaper.layout_mut().constraints = LayoutConstraints {
+            preferred_size: Some(Size::new(self.context.size.width as f32, self.context.size.height as f32)),
+            min_size: Size::new(0.0, 0.0),
+            max_size: Size::new(f32::INFINITY, f32::INFINITY),
+            flex_grow: 1.0,
+            flex_shrink: 0.0,
+            aspect_ratio: None,
+        };
 
         desktop.add_child(Box::new(wallpaper));
         desktop.add_child(Box::new(taskbar));
@@ -227,7 +440,9 @@ impl Compositor {
         self.window_manager.set_desktop_bounds(desktop_bounds);
 
         // Update desktop UI layout
-        self.desktop_ui.layout(Size::new(new_size.width as f32, new_size.height as f32));
+        let desktop_size = Size::new(new_size.width as f32, new_size.height as f32);
+        self.desktop_ui.layout(desktop_size);
+        println!("📐 Resized to {}x{}, desktop layout updated", new_size.width, new_size.height);
     }
 
     /// Main update loop
@@ -251,8 +466,8 @@ impl Compositor {
     fn render(&mut self) -> Result<()> {
         let frame_start = Instant::now();
 
-        // Get surface texture
-        let surface = self.surface.as_ref().unwrap();
+        // Get surface texture from context
+        let surface = self.context.surface.as_ref().ok_or_else(|| anyhow::anyhow!("No surface available for rendering"))?;
         let output = surface.get_current_texture()?;
         let view = output.texture.create_view(&wgpu::TextureViewDescriptor::default());
 
@@ -271,8 +486,8 @@ impl Compositor {
                     ops: wgpu::Operations {
                         load: wgpu::LoadOp::Clear(wgpu::Color {
                             r: 0.1,
-                            g: 0.1,
-                            b: 0.1,
+                            g: 0.15,
+                            b: 0.3,
                             a: 1.0,
                         }),
                         store: wgpu::StoreOp::Store,
@@ -293,6 +508,13 @@ impl Compositor {
             let mut all_layers = Vec::new();
             all_layers.extend(desktop_layers);
             all_layers.extend(window_layers);
+
+            // Debug: Print total number of render commands
+            let total_commands: usize = all_layers.iter().map(|layer| layer.commands.len()).sum();
+            if self.frame_count % 60 == 0 && total_commands > 0 {
+                println!("🎨 Frame {}: {} render layers, {} total commands",
+                    self.frame_count, all_layers.len(), total_commands);
+            }
 
             // Begin frame and render
             let time = self.frame_count as f32 * 0.016; // Approximate time

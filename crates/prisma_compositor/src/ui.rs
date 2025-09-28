@@ -483,12 +483,26 @@ impl UIElement for Button {
     }
 
     fn measure(&mut self, available_size: Size) -> Size {
+        // Respect constraints if set
+        if let Some(preferred) = self.layout.constraints.preferred_size {
+            return Size::new(
+                preferred.width.min(available_size.width).max(self.layout.constraints.min_size.width),
+                preferred.height.min(available_size.height).max(self.layout.constraints.min_size.height),
+            );
+        }
+
+        // Fallback to content-based sizing
         let text_size = self.text.measure(available_size);
         let padding = self.layout.padding.total_size();
-
-        Size::new(
+        let measured = Size::new(
             text_size.width + padding.width + 16.0, // Extra padding for button
             text_size.height + padding.height + 8.0,
+        );
+
+        // Clamp to constraints
+        Size::new(
+            measured.width.min(self.layout.constraints.max_size.width).max(self.layout.constraints.min_size.width),
+            measured.height.min(self.layout.constraints.max_size.height).max(self.layout.constraints.min_size.height),
         )
     }
 
@@ -653,7 +667,16 @@ impl UIElement for Container {
     }
 
     fn measure(&mut self, available_size: Size) -> Size {
-        match self.layout_direction {
+        // Check if we have explicit constraints first
+        if let Some(preferred) = self.layout.constraints.preferred_size {
+            return Size::new(
+                preferred.width.min(available_size.width).max(self.layout.constraints.min_size.width),
+                preferred.height.min(available_size.height).max(self.layout.constraints.min_size.height),
+            );
+        }
+
+        // Calculate based on children
+        let measured = match self.layout_direction {
             LayoutDirection::Horizontal => {
                 let mut total_width = 0.0;
                 let mut max_height = 0.0;
@@ -690,7 +713,13 @@ impl UIElement for Container {
 
                 Size::new(max_width, max_height)
             }
-        }
+        };
+
+        // Clamp to constraints
+        Size::new(
+            measured.width.min(self.layout.constraints.max_size.width).max(self.layout.constraints.min_size.width),
+            measured.height.min(self.layout.constraints.max_size.height).max(self.layout.constraints.min_size.height),
+        )
     }
 
     fn arrange(&mut self, bounds: Rect) {
@@ -705,32 +734,58 @@ impl UIElement for Container {
 
         match self.layout_direction {
             LayoutDirection::Horizontal => {
-                let child_width = content_bounds.size.width / self.children.len() as f32;
-                for (i, child) in self.children.iter_mut().enumerate() {
+                let mut current_x = content_bounds.origin.x;
+                for child in self.children.iter_mut() {
+                    let remaining_width = content_bounds.size.width - (current_x - content_bounds.origin.x);
+                    let child_size = child.measure(Size::new(remaining_width, content_bounds.size.height));
                     let child_bounds = Rect::new(
-                        content_bounds.origin.x + i as f32 * child_width,
+                        current_x,
                         content_bounds.origin.y,
-                        child_width,
+                        child_size.width,
                         content_bounds.size.height,
                     );
                     child.arrange(child_bounds);
+                    current_x += child_size.width;
                 }
             }
             LayoutDirection::Vertical => {
-                let child_height = content_bounds.size.height / self.children.len() as f32;
-                for (i, child) in self.children.iter_mut().enumerate() {
+                let mut current_y = content_bounds.origin.y;
+                for child in self.children.iter_mut() {
+                    let remaining_height = content_bounds.size.height - (current_y - content_bounds.origin.y);
+                    let child_size = child.measure(Size::new(content_bounds.size.width, remaining_height));
                     let child_bounds = Rect::new(
                         content_bounds.origin.x,
-                        content_bounds.origin.y + i as f32 * child_height,
+                        current_y,
                         content_bounds.size.width,
-                        child_height,
+                        child_size.height,
                     );
                     child.arrange(child_bounds);
+                    current_y += child_size.height;
                 }
             }
             LayoutDirection::Stack => {
-                for child in &mut self.children {
-                    child.arrange(content_bounds);
+                // Special handling for stack layout - position taskbar at bottom
+                for child in self.children.iter_mut() {
+                    if child.id() == "taskbar" {
+                        // Position taskbar at bottom
+                        let taskbar_height = 48.0; // Fixed height
+                        let taskbar_bounds = Rect::new(
+                            content_bounds.origin.x,
+                            content_bounds.origin.y + content_bounds.size.height - taskbar_height,
+                            content_bounds.size.width,
+                            taskbar_height,
+                        );
+                        child.arrange(taskbar_bounds);
+                    } else {
+                        // Other children fill remaining space
+                        let remaining_bounds = Rect::new(
+                            content_bounds.origin.x,
+                            content_bounds.origin.y,
+                            content_bounds.size.width,
+                            content_bounds.size.height - 48.0, // Leave space for taskbar
+                        );
+                        child.arrange(remaining_bounds);
+                    }
                 }
             }
         }
