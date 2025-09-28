@@ -11,10 +11,12 @@ use crate::{
 pub mod wallpaper;
 pub mod desktop_icon;
 pub mod dock;
+pub mod menu_bar;
 
 pub use wallpaper::Wallpaper;
 pub use desktop_icon::{DesktopIcon, DesktopIconGrid, IconSize};
 pub use dock::{Dock, DockApp, DockEvent};
+pub use menu_bar::MenuBar;
 
 /// Layout constraints for flexible UI positioning
 #[derive(Debug, Clone)]
@@ -773,9 +775,19 @@ impl UIElement for Container {
                 }
             }
             LayoutDirection::Stack => {
-                // Special handling for stack layout - position dock at bottom center
+                // Special handling for stack layout - position menu bar at top, dock at bottom
                 for child in self.children.iter_mut() {
-                    if child.id() == "dock" {
+                    if child.id() == "menu_bar" {
+                        // Position menu bar at top with full width
+                        let menu_bar_size = child.measure(content_bounds.size);
+                        let menu_bar_bounds = Rect::new(
+                            content_bounds.origin.x,
+                            content_bounds.origin.y,
+                            content_bounds.size.width,
+                            menu_bar_size.height,
+                        );
+                        child.arrange(menu_bar_bounds);
+                    } else if child.id() == "dock" {
                         // Position dock at bottom center with macOS styling
                         let dock_size = child.measure(content_bounds.size);
                         let dock_margin_bottom = 8.0; // macOS dock margin

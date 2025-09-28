@@ -74,27 +74,37 @@ impl Wallpaper {
         self.needs_visual = true;
     }
 
-    /// Generate beautiful gradient background commands
+    /// Generate authentic macOS gradient background
     fn render_gradient_background(&self, bounds: Rect, z_index: f32) -> Vec<RenderCommand> {
         let mut commands = Vec::new();
 
-        // Main gradient background
+        // Authentic macOS Ventura-style gradient
         commands.push(RenderCommand::GradientRectangle {
             rect: bounds,
-            start_color: Color::from_hex("#1E1E2E").unwrap_or(Color::new(0.12, 0.12, 0.18, 1.0)),
-            end_color: Color::from_hex("#2A2A4A").unwrap_or(Color::new(0.16, 0.16, 0.29, 1.0)),
-            direction: std::f32::consts::PI * 0.75, // Diagonal gradient
+            start_color: Color::from_hex("#1e3c72").unwrap_or(Color::new(0.12, 0.24, 0.45, 1.0)),
+            end_color: Color::from_hex("#2a5298").unwrap_or(Color::new(0.16, 0.32, 0.60, 1.0)),
+            direction: std::f32::consts::PI * 0.75, // Diagonal like authentic macOS
             transform: Transform::identity(),
             z_index,
         });
 
-        // Add floating orbs for depth and beauty
-        self.render_floating_orbs(bounds, z_index + 0.1, &mut commands);
+        // Secondary gradient layer for depth (like real macOS wallpapers)
+        commands.push(RenderCommand::GradientRectangle {
+            rect: bounds,
+            start_color: Color::new(0.15, 0.25, 0.50, 0.3),
+            end_color: Color::new(0.08, 0.15, 0.35, 0.1),
+            direction: std::f32::consts::PI / 6.0, // Different angle for layered effect
+            transform: Transform::identity(),
+            z_index: z_index + 0.05,
+        });
 
-        // Subtle texture overlay
+        // Add subtle macOS-style abstract shapes instead of orbs
+        self.render_macos_abstract_shapes(bounds, z_index + 0.1, &mut commands);
+
+        // Very subtle noise texture like real macOS
         commands.push(RenderCommand::Rectangle {
             rect: bounds,
-            color: Color::new(1.0, 1.0, 1.0, 0.02), // Very subtle white overlay
+            color: Color::new(1.0, 1.0, 1.0, 0.015), // Extremely subtle
             transform: Transform::identity(),
             z_index: z_index + 0.2,
         });
@@ -102,7 +112,49 @@ impl Wallpaper {
         commands
     }
 
-    /// Render floating orbs for visual depth
+    /// Render macOS-style abstract shapes for authentic look
+    fn render_macos_abstract_shapes(&self, bounds: Rect, z_index: f32, commands: &mut Vec<RenderCommand>) {
+        // Subtle geometric shapes like real macOS wallpapers
+        let shapes = [
+            // Large subtle circle in upper area
+            (
+                Point::new(bounds.size.width * 0.2, bounds.size.height * 0.15),
+                180.0,
+                Color::new(0.3, 0.5, 0.8, 0.06),
+            ),
+            // Medium oval in lower right
+            (
+                Point::new(bounds.size.width * 0.8, bounds.size.height * 0.75),
+                120.0,
+                Color::new(0.2, 0.4, 0.7, 0.04),
+            ),
+            // Small accent shape
+            (
+                Point::new(bounds.size.width * 0.15, bounds.size.height * 0.6),
+                80.0,
+                Color::new(0.4, 0.6, 0.9, 0.05),
+            ),
+        ];
+
+        for (position, size, color) in shapes {
+            let shape_rect = Rect::new(
+                bounds.origin.x + position.x - size / 2.0,
+                bounds.origin.y + position.y - size / 2.0,
+                size,
+                size,
+            );
+
+            commands.push(RenderCommand::RoundedRectangle {
+                rect: shape_rect,
+                corner_radius: size / 2.0, // Circular shapes
+                color,
+                transform: Transform::identity(),
+                z_index,
+            });
+        }
+    }
+
+    /// Render floating orbs for visual depth (legacy method)
     fn render_floating_orbs(&self, bounds: Rect, z_index: f32, commands: &mut Vec<RenderCommand>) {
         let orbs = [
             // Large purple orb

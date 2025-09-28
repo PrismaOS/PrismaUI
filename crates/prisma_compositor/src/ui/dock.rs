@@ -55,7 +55,7 @@ impl DockApp {
         }
     }
 
-    /// Render the dock app icon with beautiful styling
+    /// Render the dock app icon with authentic macOS styling
     pub fn render(&self, bounds: Rect, z_index: f32) -> Vec<RenderCommand> {
         let mut commands = Vec::new();
         let icon_size = bounds.size.width;
@@ -72,28 +72,47 @@ impl DockApp {
             scaled_size,
         );
 
-        // Beautiful shadow for depth
-        let shadow_offset = 2.0 * total_scale;
+        // Authentic macOS shadow with multiple layers for depth
+        let shadow_blur = 3.0 * total_scale;
+        let shadow_offset_y = 2.5 * total_scale;
+
+        // Main shadow
         let shadow_rect = Rect::new(
-            icon_rect.origin.x + shadow_offset,
-            icon_rect.origin.y + shadow_offset,
+            icon_rect.origin.x + 1.0,
+            icon_rect.origin.y + shadow_offset_y,
             icon_rect.size.width,
             icon_rect.size.height,
         );
 
         commands.push(RenderCommand::RoundedRectangle {
             rect: shadow_rect,
-            corner_radius: scaled_size * 0.2,
-            color: Color::new(0.0, 0.0, 0.0, 0.3 * total_scale),
+            corner_radius: scaled_size * 0.225, // Perfect macOS radius
+            color: Color::new(0.0, 0.0, 0.0, 0.25 * total_scale),
             transform: Transform::identity(),
-            z_index: z_index - 0.1,
+            z_index: z_index - 0.3,
         });
 
-        // Main icon background
-        let corner_radius = scaled_size * 0.22; // 22% for modern macOS look
+        // Softer outer shadow
+        let outer_shadow_rect = Rect::new(
+            icon_rect.origin.x - 1.0,
+            icon_rect.origin.y + shadow_offset_y - 1.0,
+            icon_rect.size.width + 2.0,
+            icon_rect.size.height + 2.0,
+        );
+
+        commands.push(RenderCommand::RoundedRectangle {
+            rect: outer_shadow_rect,
+            corner_radius: scaled_size * 0.235,
+            color: Color::new(0.0, 0.0, 0.0, 0.1 * total_scale),
+            transform: Transform::identity(),
+            z_index: z_index - 0.4,
+        });
+
+        // Main icon background with perfect macOS corner radius
+        let corner_radius = scaled_size * 0.225; // Authentic macOS radius
 
         if let Some(texture_id) = self.texture_id {
-            // Render textured icon
+            // Render textured icon with rounded corners
             commands.push(RenderCommand::TexturedRectangle {
                 rect: icon_rect,
                 texture_id,
@@ -103,75 +122,89 @@ impl DockApp {
                 z_index,
             });
         } else {
-            // Render built-in app icon with beautiful gradient
+            // Render built-in app icon with authentic macOS styling
             let app_color = self.get_app_color();
-            let lighter_color = Color::new(
-                (app_color.r + 0.3).min(1.0),
-                (app_color.g + 0.3).min(1.0),
-                (app_color.b + 0.3).min(1.0),
-                app_color.a,
-            );
 
-            // Gradient background
-            commands.push(RenderCommand::GradientRectangle {
+            // Main icon background
+            commands.push(RenderCommand::RoundedRectangle {
                 rect: icon_rect,
-                start_color: lighter_color,
-                end_color: app_color,
-                direction: std::f32::consts::PI * 0.75, // Diagonal
+                corner_radius,
+                color: app_color,
                 transform: Transform::identity(),
                 z_index,
             });
 
-            // Icon symbol area
+            // Icon symbol (simplified for now)
+            let symbol_size = scaled_size * 0.45;
             let symbol_rect = Rect::new(
-                icon_rect.origin.x + scaled_size * 0.25,
-                icon_rect.origin.y + scaled_size * 0.25,
-                scaled_size * 0.5,
-                scaled_size * 0.5,
+                icon_rect.origin.x + (scaled_size - symbol_size) / 2.0,
+                icon_rect.origin.y + (scaled_size - symbol_size) / 2.0,
+                symbol_size,
+                symbol_size,
             );
 
             commands.push(RenderCommand::RoundedRectangle {
                 rect: symbol_rect,
-                corner_radius: corner_radius * 0.5,
-                color: Color::new(1.0, 1.0, 1.0, 0.9),
+                corner_radius: symbol_size * 0.15,
+                color: Color::new(1.0, 1.0, 1.0, 0.95),
                 transform: Transform::identity(),
                 z_index: z_index + 0.1,
             });
         }
 
-        // Glassy highlight for 3D effect
+        // Authentic macOS glassy highlight
+        let highlight_height = scaled_size * 0.35;
         let highlight_rect = Rect::new(
-            icon_rect.origin.x + scaled_size * 0.1,
-            icon_rect.origin.y + scaled_size * 0.1,
-            scaled_size * 0.8,
-            scaled_size * 0.3,
+            icon_rect.origin.x + scaled_size * 0.05,
+            icon_rect.origin.y + scaled_size * 0.05,
+            scaled_size * 0.9,
+            highlight_height,
         );
 
-        commands.push(RenderCommand::RoundedRectangle {
+        // Top highlight gradient effect
+        commands.push(RenderCommand::GradientRectangle {
             rect: highlight_rect,
-            corner_radius: corner_radius * 0.8,
-            color: Color::new(1.0, 1.0, 1.0, 0.3),
+            start_color: Color::new(1.0, 1.0, 1.0, 0.4),
+            end_color: Color::new(1.0, 1.0, 1.0, 0.0),
+            direction: std::f32::consts::PI / 2.0, // Vertical gradient
             transform: Transform::identity(),
             z_index: z_index + 0.2,
         });
 
-        // Running indicator (small dot)
+        // Authentic macOS running indicator
         if self.running {
-            let dot_size = 4.0;
+            let dot_size = 5.0; // Slightly larger like real macOS
             let dot_rect = Rect::new(
                 bounds.origin.x + (icon_size - dot_size) / 2.0,
-                bounds.origin.y + icon_size + 6.0,
+                bounds.origin.y + icon_size + 8.0, // Perfect positioning
+                dot_size,
+                dot_size,
+            );
+
+            // Dot shadow for depth
+            let dot_shadow_rect = Rect::new(
+                dot_rect.origin.x + 0.5,
+                dot_rect.origin.y + 1.0,
                 dot_size,
                 dot_size,
             );
 
             commands.push(RenderCommand::RoundedRectangle {
+                rect: dot_shadow_rect,
+                corner_radius: dot_size / 2.0,
+                color: Color::new(0.0, 0.0, 0.0, 0.3),
+                transform: Transform::identity(),
+                z_index: z_index + 0.25,
+            });
+
+            // Main dot
+            commands.push(RenderCommand::RoundedRectangle {
                 rect: dot_rect,
                 corner_radius: dot_size / 2.0,
                 color: if self.active {
-                    Color::new(1.0, 1.0, 1.0, 0.9) // White when active
+                    Color::new(0.95, 0.95, 0.95, 0.95) // Bright white when active
                 } else {
-                    Color::new(0.6, 0.6, 0.6, 0.8) // Gray when just running
+                    Color::new(0.7, 0.7, 0.7, 0.9) // Subtle gray when just running
                 },
                 transform: Transform::identity(),
                 z_index: z_index + 0.3,
@@ -248,21 +281,23 @@ impl Dock {
         }
     }
 
-    /// Update magnification effect based on hover
+    /// Update magnification effect with authentic macOS curve
     fn update_magnification(&mut self) {
         if let Some(hover_index) = self.hover_app_index {
             for (i, app) in self.apps.iter_mut().enumerate() {
                 let distance = (i as f32 - hover_index as f32).abs();
 
-                // macOS-style magnification curve
+                // Authentic macOS magnification curve with smooth falloff
                 app.hover_scale = if distance == 0.0 {
-                    1.5 // 50% larger when directly hovered
-                } else if distance == 1.0 {
-                    1.3 // 30% larger for adjacent icons
-                } else if distance == 2.0 {
-                    1.15 // 15% larger for next icons
+                    1.6 // 60% larger when directly hovered (authentic macOS)
+                } else if distance <= 1.0 {
+                    1.4 // 40% larger for adjacent icons
+                } else if distance <= 2.0 {
+                    1.2 // 20% larger for next adjacent
+                } else if distance <= 3.0 {
+                    1.1 // 10% larger for distant neighbors
                 } else {
-                    1.0 // Normal size for distant icons
+                    1.0 // Normal size for far icons
                 };
             }
         } else {
@@ -293,74 +328,128 @@ impl Dock {
         }
     }
 
-    /// Render the beautiful dock background
+    /// Render the authentic macOS dock background
     fn render_dock_background(&self, z_index: f32) -> Vec<RenderCommand> {
         let mut commands = Vec::new();
         let bounds = self.layout.bounds;
 
-        // Beautiful rounded dock background with transparency
+        // Perfect macOS dock background dimensions
         let dock_bg_rect = Rect::new(
-            bounds.origin.x - 16.0,
-            bounds.origin.y - 12.0,
-            bounds.size.width + 32.0,
-            bounds.size.height + 24.0,
+            bounds.origin.x - 12.0,
+            bounds.origin.y - 8.0,
+            bounds.size.width + 24.0,
+            bounds.size.height + 16.0,
         );
 
-        // Dock shadow for depth
-        let shadow_rect = Rect::new(
-            dock_bg_rect.origin.x + 2.0,
-            dock_bg_rect.origin.y + 4.0,
+        // Authentic macOS dock shadow with multiple layers
+        let shadow_offset_y = 3.0;
+        let shadow_blur = 8.0;
+
+        // Deep shadow
+        let deep_shadow_rect = Rect::new(
+            dock_bg_rect.origin.x + 1.0,
+            dock_bg_rect.origin.y + shadow_offset_y + 2.0,
             dock_bg_rect.size.width,
             dock_bg_rect.size.height,
         );
 
         commands.push(RenderCommand::RoundedRectangle {
-            rect: shadow_rect,
-            corner_radius: 20.0,
-            color: Color::new(0.0, 0.0, 0.0, 0.4),
+            rect: deep_shadow_rect,
+            corner_radius: 16.0,
+            color: Color::new(0.0, 0.0, 0.0, 0.35),
             transform: Transform::identity(),
-            z_index: z_index - 0.2,
+            z_index: z_index - 0.4,
         });
 
-        // Main dock background with glass effect
+        // Medium shadow
+        let mid_shadow_rect = Rect::new(
+            dock_bg_rect.origin.x + 0.5,
+            dock_bg_rect.origin.y + shadow_offset_y,
+            dock_bg_rect.size.width,
+            dock_bg_rect.size.height,
+        );
+
+        commands.push(RenderCommand::RoundedRectangle {
+            rect: mid_shadow_rect,
+            corner_radius: 16.0,
+            color: Color::new(0.0, 0.0, 0.0, 0.2),
+            transform: Transform::identity(),
+            z_index: z_index - 0.3,
+        });
+
+        // Soft outer shadow
+        let soft_shadow_rect = Rect::new(
+            dock_bg_rect.origin.x - 2.0,
+            dock_bg_rect.origin.y + shadow_offset_y - 2.0,
+            dock_bg_rect.size.width + 4.0,
+            dock_bg_rect.size.height + 4.0,
+        );
+
+        commands.push(RenderCommand::RoundedRectangle {
+            rect: soft_shadow_rect,
+            corner_radius: 18.0,
+            color: Color::new(0.0, 0.0, 0.0, 0.08),
+            transform: Transform::identity(),
+            z_index: z_index - 0.5,
+        });
+
+        // Main dock background - authentic macOS translucent glass
         commands.push(RenderCommand::RoundedRectangle {
             rect: dock_bg_rect,
-            corner_radius: 18.0,
-            color: Color::new(0.08, 0.08, 0.12, 0.85), // Dark translucent
+            corner_radius: 16.0, // Perfect macOS radius
+            color: Color::new(0.12, 0.12, 0.15, 0.92), // Authentic macOS dock color
             transform: Transform::identity(),
             z_index: z_index - 0.1,
         });
 
-        // Glass highlight on top edge
-        let highlight_rect = Rect::new(
-            dock_bg_rect.origin.x + 2.0,
-            dock_bg_rect.origin.y + 2.0,
-            dock_bg_rect.size.width - 4.0,
-            3.0,
+        // Dock inner highlight for glass effect
+        let inner_highlight_rect = Rect::new(
+            dock_bg_rect.origin.x + 1.0,
+            dock_bg_rect.origin.y + 1.0,
+            dock_bg_rect.size.width - 2.0,
+            dock_bg_rect.size.height - 2.0,
         );
 
         commands.push(RenderCommand::RoundedRectangle {
-            rect: highlight_rect,
+            rect: inner_highlight_rect,
             corner_radius: 15.0,
-            color: Color::new(1.0, 1.0, 1.0, 0.1),
+            color: Color::new(1.0, 1.0, 1.0, 0.12),
+            transform: Transform::identity(),
+            z_index: z_index - 0.05,
+        });
+
+        // Top glass highlight - essential for macOS authenticity
+        let top_highlight_rect = Rect::new(
+            dock_bg_rect.origin.x + 2.0,
+            dock_bg_rect.origin.y + 1.0,
+            dock_bg_rect.size.width - 4.0,
+            8.0, // Height of top highlight
+        );
+
+        commands.push(RenderCommand::GradientRectangle {
+            rect: top_highlight_rect,
+            start_color: Color::new(1.0, 1.0, 1.0, 0.25),
+            end_color: Color::new(1.0, 1.0, 1.0, 0.0),
+            direction: std::f32::consts::PI / 2.0, // Vertical gradient
             transform: Transform::identity(),
             z_index,
         });
 
-        // Subtle border
-        let border_rect = Rect::new(
-            dock_bg_rect.origin.x - 0.5,
-            dock_bg_rect.origin.y - 0.5,
-            dock_bg_rect.size.width + 1.0,
-            dock_bg_rect.size.height + 1.0,
+        // Subtle bottom inner shadow
+        let bottom_shadow_rect = Rect::new(
+            dock_bg_rect.origin.x + 2.0,
+            dock_bg_rect.origin.y + dock_bg_rect.size.height - 4.0,
+            dock_bg_rect.size.width - 4.0,
+            3.0,
         );
 
-        commands.push(RenderCommand::RoundedRectangle {
-            rect: border_rect,
-            corner_radius: 18.5,
-            color: Color::new(1.0, 1.0, 1.0, 0.15),
+        commands.push(RenderCommand::GradientRectangle {
+            rect: bottom_shadow_rect,
+            start_color: Color::new(0.0, 0.0, 0.0, 0.0),
+            end_color: Color::new(0.0, 0.0, 0.0, 0.1),
+            direction: std::f32::consts::PI / 2.0, // Vertical gradient
             transform: Transform::identity(),
-            z_index: z_index - 0.15,
+            z_index: z_index + 0.01,
         });
 
         commands

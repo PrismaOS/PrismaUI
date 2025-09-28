@@ -13,7 +13,7 @@ use crate::{
     core::Context,
     renderer::Renderer,
     window::{WindowManager, WindowId},
-    ui::{UITree, Container, Button, Text, LayoutDirection, UIElement, LayoutConstraints, Dock, Wallpaper},
+    ui::{UITree, Container, Button, Text, LayoutDirection, UIElement, LayoutConstraints, Dock, Wallpaper, MenuBar},
     events::{EventDispatcher, Event, InputEvent, MouseButton, ButtonState, Modifiers},
     text::TextRenderer,
     assets::AssetManager,
@@ -324,8 +324,12 @@ impl Compositor {
         Ok(())
     }
 
-    /// Create macOS-style desktop UI with beautiful glassy dock and wallpaper
+    /// Create authentic macOS desktop UI with menu bar, wallpaper, and dock
     fn create_desktop_ui(&mut self) {
+        // Create authentic macOS menu bar
+        let mut menu_bar = MenuBar::new("menu_bar".to_string());
+        menu_bar.add_default_items();
+
         // Create beautiful wallpaper with floating effects
         let mut wallpaper = Wallpaper::new("wallpaper".to_string());
         wallpaper.layout_mut().constraints = LayoutConstraints {
@@ -354,13 +358,14 @@ impl Compositor {
             aspect_ratio: None,
         };
 
-        // Add wallpaper and dock - order matters for layering
+        // Add components in correct layering order
         desktop.add_child(Box::new(wallpaper));
+        desktop.add_child(Box::new(menu_bar));
         desktop.add_child(Box::new(dock));
 
         self.desktop_ui.set_root(Box::new(desktop));
 
-        println!("🖥️  Beautiful macOS-style desktop created with glassy dock!");
+        println!("🖥️  Authentic macOS desktop created with menu bar, wallpaper, and dock!");
     }
 
     /// Create a demo window with macOS-style design
