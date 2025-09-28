@@ -60,19 +60,20 @@ pub struct WindowDecorations {
 impl Default for WindowDecorations {
     fn default() -> Self {
         Self {
-            title_bar_height: 44.0, // Taller for macOS-style proportions
-            border_width: 0.5, // Thinner border for elegance
-            corner_radius: 16.0, // Much more rounded for modern macOS look
-            title_bar_color: Color::from_hex("#F8F8F8").unwrap_or(Color::new(0.97, 0.97, 0.97, 0.95)), // Light translucent
-            border_color: Color::from_hex("#E0E0E0").unwrap_or(Color::new(0.88, 0.88, 0.88, 0.8)), // Light border
-            focused_color: Color::from_hex("#007AFF").unwrap_or(Color::BLUE), // macOS blue
-            unfocused_color: Color::from_hex("#D1D1D6").unwrap_or(Color::new(0.82, 0.82, 0.84, 1.0)), // System gray
+            title_bar_height: 40.0, // Perfect macOS proportions
+            border_width: 0.0, // No visible border for modern look
+            corner_radius: 12.0, // Authentic macOS rounded corners
+            // Modern macOS dark theme colors with transparency
+            title_bar_color: Color::new(0.14, 0.14, 0.16, 0.85), // Dark translucent
+            border_color: Color::new(0.0, 0.0, 0.0, 0.1), // Subtle dark border
+            focused_color: Color::new(0.0, 0.48, 1.0, 1.0), // macOS accent blue
+            unfocused_color: Color::new(0.44, 0.44, 0.44, 1.0), // Dark gray
         }
     }
 }
 
 impl WindowDecorations {
-    /// Generate render commands for window decorations
+    /// Generate render commands for beautiful macOS-style window decorations
     pub fn render(&self, state: &WindowState, z_index: f32) -> Vec<RenderCommand> {
         if !state.decorations {
             return Vec::new();
@@ -80,11 +81,14 @@ impl WindowDecorations {
 
         let mut commands = Vec::new();
 
-        // Main window background with beautiful glass effect
+        // Beautiful shadow layers for depth
+        self.render_window_shadows(state, z_index - 0.3, &mut commands);
+
+        // Main window background with macOS dark theme
         let window_bg_color = if state.focused {
-            Color::new(1.0, 1.0, 1.0, 0.95) // Translucent white when focused
+            Color::new(0.16, 0.16, 0.18, 0.95) // Dark translucent when focused
         } else {
-            Color::new(0.95, 0.95, 0.97, 0.9) // Slightly gray when unfocused
+            Color::new(0.12, 0.12, 0.14, 0.92) // Darker when unfocused
         };
 
         commands.push(RenderCommand::RoundedRectangle {
@@ -95,30 +99,7 @@ impl WindowDecorations {
             z_index,
         });
 
-        // Window border (subtle)
-        let border_color = if state.focused {
-            Color::new(0.0, 0.48, 1.0, 0.2) // Subtle blue border when focused
-        } else {
-            Color::new(0.0, 0.0, 0.0, 0.08) // Very subtle dark border when unfocused
-        };
-
-        // Border as a slightly larger rounded rectangle behind
-        let border_rect = Rect::new(
-            state.bounds.origin.x - self.border_width,
-            state.bounds.origin.y - self.border_width,
-            state.bounds.size.width + 2.0 * self.border_width,
-            state.bounds.size.height + 2.0 * self.border_width,
-        );
-
-        commands.push(RenderCommand::RoundedRectangle {
-            rect: border_rect,
-            corner_radius: self.corner_radius + self.border_width,
-            color: border_color,
-            transform: crate::geometry::Transform::identity(),
-            z_index: z_index - 0.1,
-        });
-
-        // Title bar with gradient background
+        // Dynamic title bar with transparency and blur effect
         let title_bar_rect = Rect::new(
             state.bounds.origin.x,
             state.bounds.origin.y,
@@ -126,28 +107,48 @@ impl WindowDecorations {
             self.title_bar_height,
         );
 
-        let title_bar_start_color = if state.focused {
-            Color::new(0.98, 0.98, 0.98, 0.95)
+        // Title bar background with beautiful gradient
+        let title_bar_start = if state.focused {
+            Color::new(0.22, 0.22, 0.24, 0.88) // Lighter when focused
         } else {
-            Color::new(0.94, 0.94, 0.96, 0.9)
+            Color::new(0.14, 0.14, 0.16, 0.85) // Darker when unfocused
         };
 
-        let title_bar_end_color = if state.focused {
-            Color::new(0.96, 0.96, 0.96, 0.95)
+        let title_bar_end = if state.focused {
+            Color::new(0.18, 0.18, 0.20, 0.85)
         } else {
-            Color::new(0.92, 0.92, 0.94, 0.9)
+            Color::new(0.11, 0.11, 0.13, 0.82)
         };
 
         commands.push(RenderCommand::GradientRectangle {
             rect: title_bar_rect,
-            start_color: title_bar_start_color,
-            end_color: title_bar_end_color,
+            start_color: title_bar_start,
+            end_color: title_bar_end,
             direction: std::f32::consts::PI / 2.0, // Top to bottom
             transform: crate::geometry::Transform::identity(),
             z_index: z_index + 0.2,
         });
 
-        // Title bar separator line
+        // Add glassy highlight on title bar
+        let highlight_rect = Rect::new(
+            state.bounds.origin.x,
+            state.bounds.origin.y,
+            state.bounds.size.width,
+            2.0,
+        );
+
+        commands.push(RenderCommand::Rectangle {
+            rect: highlight_rect,
+            color: if state.focused {
+                Color::new(1.0, 1.0, 1.0, 0.08) // Subtle white highlight
+            } else {
+                Color::new(1.0, 1.0, 1.0, 0.04)
+            },
+            transform: crate::geometry::Transform::identity(),
+            z_index: z_index + 0.3,
+        });
+
+        // Title bar separator (very subtle)
         let separator_rect = Rect::new(
             state.bounds.origin.x,
             state.bounds.origin.y + self.title_bar_height - 0.5,
@@ -157,15 +158,15 @@ impl WindowDecorations {
 
         commands.push(RenderCommand::Rectangle {
             rect: separator_rect,
-            color: Color::new(0.0, 0.0, 0.0, 0.05),
+            color: Color::new(0.0, 0.0, 0.0, 0.15),
             transform: crate::geometry::Transform::identity(),
             z_index: z_index + 0.3,
         });
 
-        // Traffic light buttons (macOS style)
+        // Beautiful traffic light buttons
         self.render_traffic_lights(state, z_index + 0.4, &mut commands);
 
-        // Window content background
+        // Window content background with dark theme
         let content_rect = Rect::new(
             state.bounds.origin.x,
             state.bounds.origin.y + self.title_bar_height,
@@ -175,8 +176,8 @@ impl WindowDecorations {
 
         commands.push(RenderCommand::RoundedRectangle {
             rect: content_rect,
-            corner_radius: self.corner_radius, // Only round bottom corners
-            color: Color::new(1.0, 1.0, 1.0, 0.98),
+            corner_radius: self.corner_radius,
+            color: Color::new(0.11, 0.11, 0.13, 0.98), // Dark content area
             transform: crate::geometry::Transform::identity(),
             z_index: z_index + 0.1,
         });
@@ -184,96 +185,174 @@ impl WindowDecorations {
         commands
     }
 
-    /// Render macOS-style traffic light buttons
+    /// Render beautiful layered shadows for window depth
+    fn render_window_shadows(&self, state: &WindowState, z_index: f32, commands: &mut Vec<RenderCommand>) {
+        if state.focused {
+            // Multiple shadow layers for beautiful depth when focused
+            let shadow_layers = [
+                (2.0, 8.0, Color::new(0.0, 0.0, 0.0, 0.25)),   // Close shadow
+                (4.0, 16.0, Color::new(0.0, 0.0, 0.0, 0.18)),  // Medium shadow
+                (8.0, 32.0, Color::new(0.0, 0.0, 0.0, 0.12)),  // Far shadow
+                (16.0, 48.0, Color::new(0.0, 0.0, 0.0, 0.08)), // Ambient shadow
+            ];
+
+            for (i, (offset, blur_radius, color)) in shadow_layers.iter().enumerate() {
+                let shadow_rect = Rect::new(
+                    state.bounds.origin.x + offset,
+                    state.bounds.origin.y + offset,
+                    state.bounds.size.width,
+                    state.bounds.size.height,
+                );
+
+                commands.push(RenderCommand::RoundedRectangle {
+                    rect: shadow_rect,
+                    corner_radius: self.corner_radius + blur_radius / 4.0,
+                    color: *color,
+                    transform: crate::geometry::Transform::identity(),
+                    z_index: z_index - (i as f32 * 0.01),
+                });
+            }
+        } else {
+            // Single subtle shadow when unfocused
+            let shadow_rect = Rect::new(
+                state.bounds.origin.x + 2.0,
+                state.bounds.origin.y + 4.0,
+                state.bounds.size.width,
+                state.bounds.size.height,
+            );
+
+            commands.push(RenderCommand::RoundedRectangle {
+                rect: shadow_rect,
+                corner_radius: self.corner_radius + 2.0,
+                color: Color::new(0.0, 0.0, 0.0, 0.15),
+                transform: crate::geometry::Transform::identity(),
+                z_index,
+            });
+        }
+    }
+
+    /// Render authentic macOS-style traffic light buttons
     fn render_traffic_lights(&self, state: &WindowState, z_index: f32, commands: &mut Vec<RenderCommand>) {
-        let button_size = 14.0;
+        let button_size = 12.0; // Slightly smaller for authenticity
         let button_spacing = 8.0;
-        let margin_left = 16.0;
+        let margin_left = 20.0; // More spacing from edge
         let margin_top = (self.title_bar_height - button_size) / 2.0;
 
         let button_y = state.bounds.origin.y + margin_top;
 
-        // Close button (red)
-        let close_x = state.bounds.origin.x + margin_left;
-        let close_rect = Rect::new(close_x, button_y, button_size, button_size);
-
-        let close_color = if state.focused {
-            Color::from_hex("#FF5F57").unwrap_or(Color::RED)
-        } else {
-            Color::new(0.82, 0.82, 0.84, 1.0) // Gray when unfocused
-        };
-
-        commands.push(RenderCommand::RoundedRectangle {
-            rect: close_rect,
-            corner_radius: button_size / 2.0, // Perfect circle
-            color: close_color,
-            transform: crate::geometry::Transform::identity(),
-            z_index,
-        });
-
-        // Minimize button (yellow)
-        let minimize_x = close_x + button_size + button_spacing;
-        let minimize_rect = Rect::new(minimize_x, button_y, button_size, button_size);
-
-        let minimize_color = if state.focused {
-            Color::from_hex("#FFBD2E").unwrap_or(Color::new(1.0, 0.74, 0.18, 1.0))
-        } else {
-            Color::new(0.82, 0.82, 0.84, 1.0)
-        };
-
-        commands.push(RenderCommand::RoundedRectangle {
-            rect: minimize_rect,
-            corner_radius: button_size / 2.0,
-            color: minimize_color,
-            transform: crate::geometry::Transform::identity(),
-            z_index,
-        });
-
-        // Maximize button (green)
-        let maximize_x = minimize_x + button_size + button_spacing;
-        let maximize_rect = Rect::new(maximize_x, button_y, button_size, button_size);
-
-        let maximize_color = if state.focused {
-            Color::from_hex("#28CA42").unwrap_or(Color::GREEN)
-        } else {
-            Color::new(0.82, 0.82, 0.84, 1.0)
-        };
-
-        commands.push(RenderCommand::RoundedRectangle {
-            rect: maximize_rect,
-            corner_radius: button_size / 2.0,
-            color: maximize_color,
-            transform: crate::geometry::Transform::identity(),
-            z_index,
-        });
-
-        // Add subtle button borders for depth
         if state.focused {
-            for (rect, base_color) in [
-                (close_rect, close_color),
-                (minimize_rect, minimize_color),
-                (maximize_rect, maximize_color),
-            ] {
-                let border_color = Color::new(
-                    base_color.r * 0.8,
-                    base_color.g * 0.8,
-                    base_color.b * 0.8,
-                    0.8,
+            // Authentic macOS colors when focused
+            let buttons = [
+                (
+                    "close",
+                    Color::from_hex("#FF5F56").unwrap_or(Color::RED),
+                    Color::from_hex("#E0443E").unwrap_or(Color::RED), // Darker border
+                ),
+                (
+                    "minimize",
+                    Color::from_hex("#FFBD2E").unwrap_or(Color::new(1.0, 0.74, 0.18, 1.0)),
+                    Color::from_hex("#DEA123").unwrap_or(Color::new(0.87, 0.63, 0.14, 1.0)),
+                ),
+                (
+                    "maximize",
+                    Color::from_hex("#27C93F").unwrap_or(Color::GREEN),
+                    Color::from_hex("#1AAD34").unwrap_or(Color::GREEN),
+                ),
+            ];
+
+            for (i, (_name, bg_color, border_color)) in buttons.iter().enumerate() {
+                let button_x = state.bounds.origin.x + margin_left + (i as f32 * (button_size + button_spacing));
+                let button_rect = Rect::new(button_x, button_y, button_size, button_size);
+
+                // Button shadow for depth
+                let shadow_rect = Rect::new(
+                    button_x + 0.5,
+                    button_y + 1.0,
+                    button_size,
+                    button_size,
                 );
 
+                commands.push(RenderCommand::RoundedRectangle {
+                    rect: shadow_rect,
+                    corner_radius: button_size / 2.0,
+                    color: Color::new(0.0, 0.0, 0.0, 0.15),
+                    transform: crate::geometry::Transform::identity(),
+                    z_index: z_index - 0.1,
+                });
+
+                // Button border for depth
                 let border_rect = Rect::new(
-                    rect.origin.x - 0.5,
-                    rect.origin.y - 0.5,
-                    rect.size.width + 1.0,
-                    rect.size.height + 1.0,
+                    button_x - 0.5,
+                    button_y - 0.5,
+                    button_size + 1.0,
+                    button_size + 1.0,
                 );
 
                 commands.push(RenderCommand::RoundedRectangle {
                     rect: border_rect,
                     corner_radius: (button_size + 1.0) / 2.0,
-                    color: border_color,
+                    color: *border_color,
                     transform: crate::geometry::Transform::identity(),
-                    z_index: z_index - 0.1,
+                    z_index: z_index - 0.05,
+                });
+
+                // Main button
+                commands.push(RenderCommand::RoundedRectangle {
+                    rect: button_rect,
+                    corner_radius: button_size / 2.0,
+                    color: *bg_color,
+                    transform: crate::geometry::Transform::identity(),
+                    z_index,
+                });
+
+                // Glossy highlight for 3D effect
+                let highlight_rect = Rect::new(
+                    button_x + 1.0,
+                    button_y + 1.0,
+                    button_size - 2.0,
+                    (button_size - 2.0) / 2.0,
+                );
+
+                commands.push(RenderCommand::RoundedRectangle {
+                    rect: highlight_rect,
+                    corner_radius: (button_size - 2.0) / 4.0,
+                    color: Color::new(1.0, 1.0, 1.0, 0.25),
+                    transform: crate::geometry::Transform::identity(),
+                    z_index: z_index + 0.1,
+                });
+            }
+        } else {
+            // Subtle gray buttons when unfocused
+            let unfocused_color = Color::new(0.44, 0.44, 0.44, 0.8);
+            let unfocused_border = Color::new(0.35, 0.35, 0.35, 0.9);
+
+            for i in 0..3 {
+                let button_x = state.bounds.origin.x + margin_left + (i as f32 * (button_size + button_spacing));
+                let button_rect = Rect::new(button_x, button_y, button_size, button_size);
+
+                // Subtle border
+                let border_rect = Rect::new(
+                    button_x - 0.5,
+                    button_y - 0.5,
+                    button_size + 1.0,
+                    button_size + 1.0,
+                );
+
+                commands.push(RenderCommand::RoundedRectangle {
+                    rect: border_rect,
+                    corner_radius: (button_size + 1.0) / 2.0,
+                    color: unfocused_border,
+                    transform: crate::geometry::Transform::identity(),
+                    z_index: z_index - 0.05,
+                });
+
+                // Main button
+                commands.push(RenderCommand::RoundedRectangle {
+                    rect: button_rect,
+                    corner_radius: button_size / 2.0,
+                    color: unfocused_color,
+                    transform: crate::geometry::Transform::identity(),
+                    z_index,
                 });
             }
         }

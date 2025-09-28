@@ -10,9 +10,11 @@ use crate::{
 // Beautiful UI components
 pub mod wallpaper;
 pub mod desktop_icon;
+pub mod dock;
 
 pub use wallpaper::Wallpaper;
 pub use desktop_icon::{DesktopIcon, DesktopIconGrid, IconSize};
+pub use dock::{Dock, DockApp, DockEvent};
 
 /// Layout constraints for flexible UI positioning
 #[derive(Debug, Clone)]

@@ -1,6 +1,7 @@
 /// Main compositor orchestrating the GPU-accelerated desktop environment
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
+use std::collections::VecDeque;
 use winit::{
     dpi::PhysicalSize,
     event_loop::EventLoop,
@@ -12,12 +13,24 @@ use crate::{
     core::Context,
     renderer::Renderer,
     window::{WindowManager, WindowId},
-    ui::{UITree, Container, Button, Text, Rectangle, LayoutDirection, UIElement, LayoutConstraints},
+    ui::{UITree, Container, Button, Text, LayoutDirection, UIElement, LayoutConstraints, Dock, Wallpaper},
     events::{EventDispatcher, Event, InputEvent, MouseButton, ButtonState, Modifiers},
     text::TextRenderer,
     assets::AssetManager,
     geometry::{Rect, Size, Color},
 };
+
+/// Global app launch queue for communication between dock and compositor
+static APP_LAUNCH_QUEUE: std::sync::LazyLock<Arc<Mutex<VecDeque<String>>>> = std::sync::LazyLock::new(|| {
+    Arc::new(Mutex::new(VecDeque::new()))
+});
+
+/// Queue an app to be launched
+pub fn queue_app_launch(app_id: String) {
+    if let Ok(mut queue) = APP_LAUNCH_QUEUE.lock() {
+        queue.push_back(app_id);
+    }
+}
 
 /// Configuration for the compositor
 #[derive(Debug, Clone)]
@@ -311,95 +324,24 @@ impl Compositor {
         Ok(())
     }
 
-    /// Create macOS-style desktop UI with dock and proper layout
+    /// Create macOS-style desktop UI with beautiful glassy dock and wallpaper
     fn create_desktop_ui(&mut self) {
-        // Create macOS-style dock at the bottom
-        let mut dock = Container::new("dock".to_string())
-            .with_direction(LayoutDirection::Horizontal);
-
-        // Dock constraints - centered, glass effect, proper macOS sizing
-        dock.layout_mut().constraints = LayoutConstraints {
-            preferred_size: Some(Size::new(400.0, 68.0)), // macOS dock height
-            min_size: Size::new(300.0, 68.0),
-            max_size: Size::new(600.0, 68.0),
-            flex_grow: 0.0,
+        // Create beautiful wallpaper with floating effects
+        let mut wallpaper = Wallpaper::new("wallpaper".to_string());
+        wallpaper.layout_mut().constraints = LayoutConstraints {
+            preferred_size: Some(Size::new(self.context.size.width as f32, self.context.size.height as f32)),
+            min_size: Size::new(0.0, 0.0),
+            max_size: Size::new(f32::INFINITY, f32::INFINITY),
+            flex_grow: 1.0,
             flex_shrink: 0.0,
             aspect_ratio: None,
         };
 
-        // macOS-style dock background (translucent glass effect)
-        let mut dock_background = Rectangle::new("dock_background".to_string())
-            .with_color(Color::new(0.1, 0.1, 0.1, 0.8)) // Dark translucent
-            .with_corner_radius(16.0); // Rounded corners like macOS
+        // Create beautiful glassy dock with default apps
+        let mut dock = Dock::new("dock".to_string());
+        dock.add_default_apps();
 
-        // Create dock app icons with proper macOS styling
-        let mut finder_icon = Button::new("finder".to_string(), "📁".to_string())
-            .with_colors(
-                Color::new(0.2, 0.2, 0.2, 0.9), // Subtle background
-                Color::new(0.3, 0.3, 0.3, 0.9), // Hover
-                Color::new(0.4, 0.4, 0.4, 0.9), // Active
-            );
-        finder_icon.layout_mut().constraints = LayoutConstraints {
-            preferred_size: Some(Size::new(52.0, 52.0)), // macOS dock icon size
-            min_size: Size::new(48.0, 48.0),
-            max_size: Size::new(64.0, 64.0),
-            flex_grow: 0.0,
-            flex_shrink: 0.0,
-            aspect_ratio: Some(1.0), // Square icons
-        };
-
-        let mut safari_icon = Button::new("safari".to_string(), "🌐".to_string())
-            .with_colors(
-                Color::new(0.2, 0.2, 0.2, 0.9),
-                Color::new(0.3, 0.3, 0.3, 0.9),
-                Color::new(0.4, 0.4, 0.4, 0.9),
-            );
-        safari_icon.layout_mut().constraints = LayoutConstraints {
-            preferred_size: Some(Size::new(52.0, 52.0)),
-            min_size: Size::new(48.0, 48.0),
-            max_size: Size::new(64.0, 64.0),
-            flex_grow: 0.0,
-            flex_shrink: 0.0,
-            aspect_ratio: Some(1.0),
-        };
-
-        let mut terminal_icon = Button::new("terminal".to_string(), "⚫".to_string())
-            .with_colors(
-                Color::new(0.2, 0.2, 0.2, 0.9),
-                Color::new(0.3, 0.3, 0.3, 0.9),
-                Color::new(0.4, 0.4, 0.4, 0.9),
-            );
-        terminal_icon.layout_mut().constraints = LayoutConstraints {
-            preferred_size: Some(Size::new(52.0, 52.0)),
-            min_size: Size::new(48.0, 48.0),
-            max_size: Size::new(64.0, 64.0),
-            flex_grow: 0.0,
-            flex_shrink: 0.0,
-            aspect_ratio: Some(1.0),
-        };
-
-        let mut settings_icon = Button::new("settings".to_string(), "⚙️".to_string())
-            .with_colors(
-                Color::new(0.2, 0.2, 0.2, 0.9),
-                Color::new(0.3, 0.3, 0.3, 0.9),
-                Color::new(0.4, 0.4, 0.4, 0.9),
-            );
-        settings_icon.layout_mut().constraints = LayoutConstraints {
-            preferred_size: Some(Size::new(52.0, 52.0)),
-            min_size: Size::new(48.0, 48.0),
-            max_size: Size::new(64.0, 64.0),
-            flex_grow: 0.0,
-            flex_shrink: 0.0,
-            aspect_ratio: Some(1.0),
-        };
-
-        // Add icons to dock with proper spacing
-        dock.add_child(Box::new(finder_icon));
-        dock.add_child(Box::new(safari_icon));
-        dock.add_child(Box::new(terminal_icon));
-        dock.add_child(Box::new(settings_icon));
-
-        // Create desktop container with stack layout
+        // Create desktop container with stack layout for proper layering
         let mut desktop = Container::new("desktop".to_string())
             .with_direction(LayoutDirection::Stack);
 
@@ -412,22 +354,13 @@ impl Compositor {
             aspect_ratio: None,
         };
 
-        // macOS-style gradient wallpaper
-        let mut wallpaper = Rectangle::new("wallpaper".to_string())
-            .with_color(Color::from_hex("#4c1d95").unwrap_or(Color::new(0.3, 0.11, 0.58, 1.0))); // macOS purple gradient
-        wallpaper.layout_mut().constraints = LayoutConstraints {
-            preferred_size: Some(Size::new(self.context.size.width as f32, self.context.size.height as f32)),
-            min_size: Size::new(0.0, 0.0),
-            max_size: Size::new(f32::INFINITY, f32::INFINITY),
-            flex_grow: 1.0,
-            flex_shrink: 0.0,
-            aspect_ratio: None,
-        };
-
+        // Add wallpaper and dock - order matters for layering
         desktop.add_child(Box::new(wallpaper));
         desktop.add_child(Box::new(dock));
 
         self.desktop_ui.set_root(Box::new(desktop));
+
+        println!("🖥️  Beautiful macOS-style desktop created with glassy dock!");
     }
 
     /// Create a demo window with macOS-style design
@@ -455,7 +388,10 @@ impl Compositor {
                 Color::new(0.0, 0.48, 1.0, 1.0),     // macOS blue
                 Color::new(0.0, 0.42, 0.9, 1.0),     // Hover
                 Color::new(0.0, 0.36, 0.8, 1.0),     // Active
-            );
+            )
+            .on_click(|| {
+                println!("🚀 Demo: Launching Finder...");
+            });
         button1.layout_mut().constraints = LayoutConstraints {
             preferred_size: Some(Size::new(140.0, 32.0)),
             min_size: Size::new(100.0, 28.0),
@@ -470,7 +406,10 @@ impl Compositor {
                 Color::new(0.55, 0.55, 0.55, 1.0),   // macOS gray
                 Color::new(0.65, 0.65, 0.65, 1.0),   // Hover
                 Color::new(0.45, 0.45, 0.45, 1.0),   // Active
-            );
+            )
+            .on_click(|| {
+                println!("🚀 Demo: Launching Terminal...");
+            });
         button2.layout_mut().constraints = LayoutConstraints {
             preferred_size: Some(Size::new(140.0, 32.0)),
             min_size: Size::new(100.0, 28.0),
@@ -500,6 +439,173 @@ impl Compositor {
         self.demo_window_id = Some(window_id);
     }
 
+    /// Create a new app window based on app ID
+    fn create_app_window(&mut self, app_id: &str) {
+        let (title, content) = match app_id {
+            "finder" => self.create_finder_window(),
+            "terminal" => self.create_terminal_window(),
+            "code" => self.create_code_editor_window(),
+            "browser" => self.create_browser_window(),
+            "calculator" => self.create_calculator_window(),
+            "settings" => self.create_settings_window(),
+            "music" => self.create_music_window(),
+            "photos" => self.create_photos_window(),
+            _ => ("Unknown App".to_string(), Box::new(Text::new("unknown".to_string(), "Unknown Application".to_string())) as Box<dyn UIElement>),
+        };
+
+        let window_id = self.window_manager.create_window(title, content);
+        println!("🚀 Launched {} (Window ID: {:?})", app_id, window_id);
+    }
+
+    /// Create Finder file manager window
+    fn create_finder_window(&self) -> (String, Box<dyn UIElement>) {
+        let mut content = Container::new("finder_content".to_string())
+            .with_direction(LayoutDirection::Vertical);
+
+        let title = Text::new("finder_title".to_string(), "Finder".to_string())
+            .with_font_size(18.0)
+            .with_color(Color::new(0.1, 0.1, 0.1, 1.0));
+
+        let file_list = Container::new("file_list".to_string())
+            .with_direction(LayoutDirection::Vertical);
+
+        content.add_child(Box::new(title));
+        content.add_child(Box::new(file_list));
+
+        ("Finder".to_string(), Box::new(content))
+    }
+
+    /// Create Terminal window
+    fn create_terminal_window(&self) -> (String, Box<dyn UIElement>) {
+        let mut content = Container::new("terminal_content".to_string())
+            .with_direction(LayoutDirection::Vertical);
+
+        let prompt = Text::new("terminal_prompt".to_string(), "user@prisma:~$ ".to_string())
+            .with_font_size(14.0)
+            .with_color(Color::new(0.0, 1.0, 0.0, 1.0)); // Green terminal text
+
+        content.add_child(Box::new(prompt));
+
+        ("Terminal".to_string(), Box::new(content))
+    }
+
+    /// Create Code Editor window
+    fn create_code_editor_window(&self) -> (String, Box<dyn UIElement>) {
+        let mut content = Container::new("code_content".to_string())
+            .with_direction(LayoutDirection::Vertical);
+
+        let code_text = Text::new("code_text".to_string(), "// Welcome to PrismaUI Code Editor\nfn main() {\n    println!(\"Hello, World!\");\n}".to_string())
+            .with_font_size(12.0)
+            .with_color(Color::new(0.9, 0.9, 0.9, 1.0));
+
+        content.add_child(Box::new(code_text));
+
+        ("Code Editor".to_string(), Box::new(content))
+    }
+
+    /// Create Browser window
+    fn create_browser_window(&self) -> (String, Box<dyn UIElement>) {
+        let mut content = Container::new("browser_content".to_string())
+            .with_direction(LayoutDirection::Vertical);
+
+        let address_bar = Text::new("address_bar".to_string(), "https://prismaui.dev".to_string())
+            .with_font_size(14.0)
+            .with_color(Color::new(0.1, 0.1, 0.1, 1.0));
+
+        let page_content = Text::new("page_content".to_string(), "Welcome to PrismaUI Browser\n\nA GPU-accelerated web browser built with Rust.".to_string())
+            .with_font_size(14.0)
+            .with_color(Color::new(0.2, 0.2, 0.2, 1.0));
+
+        content.add_child(Box::new(address_bar));
+        content.add_child(Box::new(page_content));
+
+        ("Safari".to_string(), Box::new(content))
+    }
+
+    /// Create Calculator window
+    fn create_calculator_window(&self) -> (String, Box<dyn UIElement>) {
+        let mut content = Container::new("calculator_content".to_string())
+            .with_direction(LayoutDirection::Vertical);
+
+        let display = Text::new("calc_display".to_string(), "0".to_string())
+            .with_font_size(24.0)
+            .with_color(Color::new(0.1, 0.1, 0.1, 1.0));
+
+        let buttons = Container::new("calc_buttons".to_string())
+            .with_direction(LayoutDirection::Horizontal);
+
+        content.add_child(Box::new(display));
+        content.add_child(Box::new(buttons));
+
+        ("Calculator".to_string(), Box::new(content))
+    }
+
+    /// Create Settings window
+    fn create_settings_window(&self) -> (String, Box<dyn UIElement>) {
+        let mut content = Container::new("settings_content".to_string())
+            .with_direction(LayoutDirection::Vertical);
+
+        let title = Text::new("settings_title".to_string(), "System Preferences".to_string())
+            .with_font_size(18.0)
+            .with_color(Color::new(0.1, 0.1, 0.1, 1.0));
+
+        let options = Text::new("settings_options".to_string(), "• Display Settings\n• Audio Settings\n• Network Settings\n• Privacy Settings".to_string())
+            .with_font_size(14.0)
+            .with_color(Color::new(0.3, 0.3, 0.3, 1.0));
+
+        content.add_child(Box::new(title));
+        content.add_child(Box::new(options));
+
+        ("System Preferences".to_string(), Box::new(content))
+    }
+
+    /// Create Music window
+    fn create_music_window(&self) -> (String, Box<dyn UIElement>) {
+        let mut content = Container::new("music_content".to_string())
+            .with_direction(LayoutDirection::Vertical);
+
+        let title = Text::new("music_title".to_string(), "Music".to_string())
+            .with_font_size(18.0)
+            .with_color(Color::new(0.1, 0.1, 0.1, 1.0));
+
+        let playlist = Text::new("music_playlist".to_string(), "♪ Now Playing: Ambient Desktop Sounds\n♪ Next: Coding Beats\n♪ Queue: Lo-Fi Study Mix".to_string())
+            .with_font_size(14.0)
+            .with_color(Color::new(0.3, 0.3, 0.3, 1.0));
+
+        content.add_child(Box::new(title));
+        content.add_child(Box::new(playlist));
+
+        ("Music".to_string(), Box::new(content))
+    }
+
+    /// Create Photos window
+    fn create_photos_window(&self) -> (String, Box<dyn UIElement>) {
+        let mut content = Container::new("photos_content".to_string())
+            .with_direction(LayoutDirection::Vertical);
+
+        let title = Text::new("photos_title".to_string(), "Photos".to_string())
+            .with_font_size(18.0)
+            .with_color(Color::new(0.1, 0.1, 0.1, 1.0));
+
+        let gallery = Text::new("photos_gallery".to_string(), "📷 My Photos (42 items)\n📁 Screenshots\n📁 Desktop Wallpapers\n📁 GPU Renders".to_string())
+            .with_font_size(14.0)
+            .with_color(Color::new(0.3, 0.3, 0.3, 1.0));
+
+        content.add_child(Box::new(title));
+        content.add_child(Box::new(gallery));
+
+        ("Photos".to_string(), Box::new(content))
+    }
+
+    /// Process queued app launches
+    fn process_app_launches(&mut self) {
+        if let Ok(mut queue) = APP_LAUNCH_QUEUE.lock() {
+            while let Some(app_id) = queue.pop_front() {
+                self.create_app_window(&app_id);
+            }
+        }
+    }
+
     /// Handle window resize
     fn resize(&mut self, new_size: PhysicalSize<u32>) {
         self.context.resize(new_size);
@@ -525,6 +631,9 @@ impl Compositor {
 
         // Update window manager
         self.window_manager.update();
+
+        // Process app launch queue
+        self.process_app_launches();
 
         // Update text layouts for UI elements that need it
         // TODO: This should be more efficient, only updating dirty text
