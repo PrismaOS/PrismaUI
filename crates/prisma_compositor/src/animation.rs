@@ -118,7 +118,7 @@ pub enum AnimationProperty {
     Custom(u32),
 }
 
-/// TODO: Easing function types for natural motion
+/// Easing function types for natural motion
 #[derive(Debug, Clone, Copy)]
 pub enum EasingFunction {
     Linear,
@@ -132,6 +132,73 @@ pub enum EasingFunction {
     Bounce,
     Elastic { amplitude: f32, period: f32 },
     Custom(fn(f32) -> f32),
+}
+
+impl EasingFunction {
+    /// Apply the easing function to a normalized time value (0.0 to 1.0)
+    pub fn apply(&self, t: f32) -> f32 {
+        let t = t.clamp(0.0, 1.0);
+
+        match self {
+            EasingFunction::Linear => t,
+            EasingFunction::EaseIn => t * t,
+            EasingFunction::EaseOut => 1.0 - (1.0 - t) * (1.0 - t),
+            EasingFunction::EaseInOut => {
+                if t < 0.5 {
+                    2.0 * t * t
+                } else {
+                    1.0 - 2.0 * (1.0 - t) * (1.0 - t)
+                }
+            }
+            EasingFunction::EaseInCubic => t * t * t,
+            EasingFunction::EaseOutCubic => 1.0 - (1.0 - t).powi(3),
+            EasingFunction::EaseInOutCubic => {
+                if t < 0.5 {
+                    4.0 * t * t * t
+                } else {
+                    1.0 - (-2.0 * t + 2.0).powi(3) / 2.0
+                }
+            }
+            EasingFunction::Spring { stiffness, damping } => {
+                // Simplified spring approximation
+                let omega = (stiffness / 1.0).sqrt();
+                let zeta = damping / (2.0 * (stiffness * 1.0).sqrt());
+
+                if zeta < 1.0 {
+                    let wd = omega * (1.0 - zeta * zeta).sqrt();
+                    let e = (-zeta * omega * t).exp();
+                    1.0 - e * (t * wd).cos()
+                } else {
+                    1.0 - (-omega * t).exp()
+                }
+            }
+            EasingFunction::Bounce => {
+                let t = 1.0 - t;
+                if t < 1.0 / 2.75 {
+                    1.0 - 7.5625 * t * t
+                } else if t < 2.0 / 2.75 {
+                    let t = t - 1.5 / 2.75;
+                    1.0 - (7.5625 * t * t + 0.75)
+                } else if t < 2.5 / 2.75 {
+                    let t = t - 2.25 / 2.75;
+                    1.0 - (7.5625 * t * t + 0.9375)
+                } else {
+                    let t = t - 2.625 / 2.75;
+                    1.0 - (7.5625 * t * t + 0.984375)
+                }
+            }
+            EasingFunction::Elastic { amplitude, period } => {
+                if t == 0.0 || t == 1.0 {
+                    t
+                } else {
+                    let s = period / 4.0;
+                    let post_fix = amplitude * 2.0_f32.powf(-10.0 * t);
+                    1.0 - post_fix * ((t - s) * (2.0 * std::f32::consts::PI) / period).sin()
+                }
+            }
+            EasingFunction::Custom(func) => func(t),
+        }
+    }
 }
 
 /// TODO: Animation state machine
@@ -244,20 +311,40 @@ impl SpringPhysics {
         }
     }
 
-    /// TODO: Update spring physics
-    pub fn update(&mut self, _delta_time: f32) {
-        // Implementation needed - spring physics equations
+    /// Update spring physics using Hooke's law
+    pub fn update(&mut self, delta_time: f32) {
+        let displacement = self.position - self.target;
+        let spring_force = -self.stiffness * displacement;
+        let damping_force = -self.damping * self.velocity;
+
+        let acceleration = spring_force + damping_force;
+        self.velocity += acceleration * delta_time;
+        self.position += self.velocity * delta_time;
     }
 
-    /// TODO: Set new target
+    /// Set new target position
     pub fn set_target(&mut self, target: f32) {
         self.target = target;
     }
 
-    /// TODO: Check if spring has settled
+    /// Check if spring has settled (within threshold)
     pub fn is_settled(&self) -> bool {
-        // Implementation needed
-        false
+        let position_threshold = 0.001;
+        let velocity_threshold = 0.001;
+
+        (self.position - self.target).abs() < position_threshold
+            && self.velocity.abs() < velocity_threshold
+    }
+
+    /// Get current position
+    pub fn position(&self) -> f32 {
+        self.position
+    }
+
+    /// Set position directly (useful for initialization)
+    pub fn set_position(&mut self, position: f32) {
+        self.position = position;
+        self.velocity = 0.0;
     }
 }
 
@@ -332,14 +419,29 @@ pub trait Animatable {
 pub struct AnimationPresets;
 
 impl AnimationPresets {
-    /// TODO: Fade in animation
+    /// Smooth fade in animation
     pub fn fade_in(duration: Duration) -> Animation {
-        // Implementation needed
         Animation {
             id: 0,
             duration,
-            easing: EasingFunction::EaseOut,
-            properties: Vec::new(),
+            easing: EasingFunction::EaseOutCubic,
+            properties: vec![AnimatedProperty {
+                property: AnimationProperty::Opacity,
+                keyframes: vec![
+                    Keyframe {
+                        time: 0.0,
+                        value: AnimationValue::Float(0.0),
+                        easing_in: None,
+                        easing_out: None,
+                    },
+                    Keyframe {
+                        time: 1.0,
+                        value: AnimationValue::Float(1.0),
+                        easing_in: None,
+                        easing_out: None,
+                    },
+                ],
+            }],
             state: AnimationState::Idle,
             start_time: None,
             delay: Duration::ZERO,
@@ -348,28 +450,267 @@ impl AnimationPresets {
         }
     }
 
-    /// TODO: Slide in from bottom animation
-    pub fn slide_in_from_bottom(duration: Duration, _distance: f32) -> Animation {
-        // Implementation needed
-        Self::fade_in(duration)
+    /// Beautiful slide in from bottom with bounce
+    pub fn slide_in_from_bottom(duration: Duration, distance: f32) -> Animation {
+        Animation {
+            id: 0,
+            duration,
+            easing: EasingFunction::Spring { stiffness: 400.0, damping: 30.0 },
+            properties: vec![
+                AnimatedProperty {
+                    property: AnimationProperty::Position,
+                    keyframes: vec![
+                        Keyframe {
+                            time: 0.0,
+                            value: AnimationValue::Point(Point::new(0.0, distance)),
+                            easing_in: None,
+                            easing_out: None,
+                        },
+                        Keyframe {
+                            time: 1.0,
+                            value: AnimationValue::Point(Point::new(0.0, 0.0)),
+                            easing_in: None,
+                            easing_out: None,
+                        },
+                    ],
+                },
+                AnimatedProperty {
+                    property: AnimationProperty::Opacity,
+                    keyframes: vec![
+                        Keyframe {
+                            time: 0.0,
+                            value: AnimationValue::Float(0.0),
+                            easing_in: None,
+                            easing_out: None,
+                        },
+                        Keyframe {
+                            time: 0.3,
+                            value: AnimationValue::Float(1.0),
+                            easing_in: None,
+                            easing_out: None,
+                        },
+                    ],
+                },
+            ],
+            state: AnimationState::Idle,
+            start_time: None,
+            delay: Duration::ZERO,
+            repeat_count: None,
+            auto_reverse: false,
+        }
     }
 
-    /// TODO: Scale bounce animation
+    /// Playful scale bounce animation
     pub fn scale_bounce(duration: Duration) -> Animation {
-        // Implementation needed
-        Self::fade_in(duration)
+        Animation {
+            id: 0,
+            duration,
+            easing: EasingFunction::Elastic { amplitude: 1.0, period: 0.3 },
+            properties: vec![AnimatedProperty {
+                property: AnimationProperty::Scale,
+                keyframes: vec![
+                    Keyframe {
+                        time: 0.0,
+                        value: AnimationValue::Float(0.0),
+                        easing_in: None,
+                        easing_out: None,
+                    },
+                    Keyframe {
+                        time: 1.0,
+                        value: AnimationValue::Float(1.0),
+                        easing_in: None,
+                        easing_out: None,
+                    },
+                ],
+            }],
+            state: AnimationState::Idle,
+            start_time: None,
+            delay: Duration::ZERO,
+            repeat_count: None,
+            auto_reverse: false,
+        }
     }
 
-    /// TODO: Window minimize animation
-    pub fn window_minimize(duration: Duration, _target_point: Point) -> Animation {
-        // Implementation needed
-        Self::fade_in(duration)
+    /// macOS-style window minimize animation
+    pub fn window_minimize(duration: Duration, target_point: Point) -> Animation {
+        Animation {
+            id: 0,
+            duration,
+            easing: EasingFunction::EaseInOutCubic,
+            properties: vec![
+                AnimatedProperty {
+                    property: AnimationProperty::Position,
+                    keyframes: vec![
+                        Keyframe {
+                            time: 0.0,
+                            value: AnimationValue::Point(Point::new(0.0, 0.0)),
+                            easing_in: None,
+                            easing_out: None,
+                        },
+                        Keyframe {
+                            time: 1.0,
+                            value: AnimationValue::Point(target_point),
+                            easing_in: None,
+                            easing_out: None,
+                        },
+                    ],
+                },
+                AnimatedProperty {
+                    property: AnimationProperty::Scale,
+                    keyframes: vec![
+                        Keyframe {
+                            time: 0.0,
+                            value: AnimationValue::Float(1.0),
+                            easing_in: None,
+                            easing_out: None,
+                        },
+                        Keyframe {
+                            time: 1.0,
+                            value: AnimationValue::Float(0.1),
+                            easing_in: None,
+                            easing_out: None,
+                        },
+                    ],
+                },
+                AnimatedProperty {
+                    property: AnimationProperty::Opacity,
+                    keyframes: vec![
+                        Keyframe {
+                            time: 0.0,
+                            value: AnimationValue::Float(1.0),
+                            easing_in: None,
+                            easing_out: None,
+                        },
+                        Keyframe {
+                            time: 0.8,
+                            value: AnimationValue::Float(0.6),
+                            easing_in: None,
+                            easing_out: None,
+                        },
+                        Keyframe {
+                            time: 1.0,
+                            value: AnimationValue::Float(0.0),
+                            easing_in: None,
+                            easing_out: None,
+                        },
+                    ],
+                },
+            ],
+            state: AnimationState::Idle,
+            start_time: None,
+            delay: Duration::ZERO,
+            repeat_count: None,
+            auto_reverse: false,
+        }
     }
 
-    /// TODO: Layout change animation
+    /// Smooth layout transition animation
     pub fn layout_transition(duration: Duration) -> Animation {
-        // Implementation needed
-        Self::fade_in(duration)
+        Animation {
+            id: 0,
+            duration,
+            easing: EasingFunction::Spring { stiffness: 300.0, damping: 25.0 },
+            properties: vec![
+                AnimatedProperty {
+                    property: AnimationProperty::Position,
+                    keyframes: vec![],  // Will be populated with actual layout changes
+                },
+                AnimatedProperty {
+                    property: AnimationProperty::Width,
+                    keyframes: vec![],
+                },
+                AnimatedProperty {
+                    property: AnimationProperty::Height,
+                    keyframes: vec![],
+                },
+            ],
+            state: AnimationState::Idle,
+            start_time: None,
+            delay: Duration::ZERO,
+            repeat_count: None,
+            auto_reverse: false,
+        }
+    }
+
+    /// Icon hover scale animation
+    pub fn icon_hover_scale(duration: Duration) -> Animation {
+        Animation {
+            id: 0,
+            duration,
+            easing: EasingFunction::EaseOutCubic,
+            properties: vec![AnimatedProperty {
+                property: AnimationProperty::Scale,
+                keyframes: vec![
+                    Keyframe {
+                        time: 0.0,
+                        value: AnimationValue::Float(1.0),
+                        easing_in: None,
+                        easing_out: None,
+                    },
+                    Keyframe {
+                        time: 1.0,
+                        value: AnimationValue::Float(1.05),
+                        easing_in: None,
+                        easing_out: None,
+                    },
+                ],
+            }],
+            state: AnimationState::Idle,
+            start_time: None,
+            delay: Duration::ZERO,
+            repeat_count: None,
+            auto_reverse: false,
+        }
+    }
+
+    /// Window focus animation
+    pub fn window_focus(duration: Duration) -> Animation {
+        Animation {
+            id: 0,
+            duration,
+            easing: EasingFunction::EaseOutCubic,
+            properties: vec![
+                AnimatedProperty {
+                    property: AnimationProperty::Scale,
+                    keyframes: vec![
+                        Keyframe {
+                            time: 0.0,
+                            value: AnimationValue::Float(0.98),
+                            easing_in: None,
+                            easing_out: None,
+                        },
+                        Keyframe {
+                            time: 1.0,
+                            value: AnimationValue::Float(1.0),
+                            easing_in: None,
+                            easing_out: None,
+                        },
+                    ],
+                },
+                AnimatedProperty {
+                    property: AnimationProperty::Opacity,
+                    keyframes: vec![
+                        Keyframe {
+                            time: 0.0,
+                            value: AnimationValue::Float(0.9),
+                            easing_in: None,
+                            easing_out: None,
+                        },
+                        Keyframe {
+                            time: 1.0,
+                            value: AnimationValue::Float(1.0),
+                            easing_in: None,
+                            easing_out: None,
+                        },
+                    ],
+                },
+            ],
+            state: AnimationState::Idle,
+            start_time: None,
+            delay: Duration::ZERO,
+            repeat_count: None,
+            auto_reverse: false,
+        }
     }
 }
 

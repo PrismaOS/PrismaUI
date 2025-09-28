@@ -7,6 +7,13 @@ use crate::{
     text::{TextRenderer, FontProperties, TextLayout},
 };
 
+// Beautiful UI components
+pub mod wallpaper;
+pub mod desktop_icon;
+
+pub use wallpaper::Wallpaper;
+pub use desktop_icon::{DesktopIcon, DesktopIconGrid, IconSize};
+
 /// Layout constraints for flexible UI positioning
 #[derive(Debug, Clone)]
 pub struct LayoutConstraints {

@@ -60,13 +60,13 @@ pub struct WindowDecorations {
 impl Default for WindowDecorations {
     fn default() -> Self {
         Self {
-            title_bar_height: 30.0,
-            border_width: 1.0,
-            corner_radius: 8.0,
-            title_bar_color: Color::from_hex("#2d2d2d").unwrap_or(Color::new(0.2, 0.2, 0.2, 1.0)),
-            border_color: Color::from_hex("#404040").unwrap_or(Color::new(0.25, 0.25, 0.25, 1.0)),
-            focused_color: Color::from_hex("#0078d4").unwrap_or(Color::BLUE),
-            unfocused_color: Color::from_hex("#606060").unwrap_or(Color::new(0.4, 0.4, 0.4, 1.0)),
+            title_bar_height: 44.0, // Taller for macOS-style proportions
+            border_width: 0.5, // Thinner border for elegance
+            corner_radius: 16.0, // Much more rounded for modern macOS look
+            title_bar_color: Color::from_hex("#F8F8F8").unwrap_or(Color::new(0.97, 0.97, 0.97, 0.95)), // Light translucent
+            border_color: Color::from_hex("#E0E0E0").unwrap_or(Color::new(0.88, 0.88, 0.88, 0.8)), // Light border
+            focused_color: Color::from_hex("#007AFF").unwrap_or(Color::BLUE), // macOS blue
+            unfocused_color: Color::from_hex("#D1D1D6").unwrap_or(Color::new(0.82, 0.82, 0.84, 1.0)), // System gray
         }
     }
 }
@@ -74,58 +74,209 @@ impl Default for WindowDecorations {
 impl WindowDecorations {
     /// Generate render commands for window decorations
     pub fn render(&self, state: &WindowState, z_index: f32) -> Vec<RenderCommand> {
-        if !state.decorations || state.maximized {
+        if !state.decorations {
             return Vec::new();
         }
 
         let mut commands = Vec::new();
 
-        // Window border
-        let border_color = if state.focused {
-            self.focused_color
+        // Main window background with beautiful glass effect
+        let window_bg_color = if state.focused {
+            Color::new(1.0, 1.0, 1.0, 0.95) // Translucent white when focused
         } else {
-            self.unfocused_color
+            Color::new(0.95, 0.95, 0.97, 0.9) // Slightly gray when unfocused
         };
 
         commands.push(RenderCommand::RoundedRectangle {
             rect: state.bounds,
             corner_radius: self.corner_radius,
-            color: border_color,
+            color: window_bg_color,
             transform: crate::geometry::Transform::identity(),
             z_index,
         });
 
-        // Title bar background
+        // Window border (subtle)
+        let border_color = if state.focused {
+            Color::new(0.0, 0.48, 1.0, 0.2) // Subtle blue border when focused
+        } else {
+            Color::new(0.0, 0.0, 0.0, 0.08) // Very subtle dark border when unfocused
+        };
+
+        // Border as a slightly larger rounded rectangle behind
+        let border_rect = Rect::new(
+            state.bounds.origin.x - self.border_width,
+            state.bounds.origin.y - self.border_width,
+            state.bounds.size.width + 2.0 * self.border_width,
+            state.bounds.size.height + 2.0 * self.border_width,
+        );
+
+        commands.push(RenderCommand::RoundedRectangle {
+            rect: border_rect,
+            corner_radius: self.corner_radius + self.border_width,
+            color: border_color,
+            transform: crate::geometry::Transform::identity(),
+            z_index: z_index - 0.1,
+        });
+
+        // Title bar with gradient background
         let title_bar_rect = Rect::new(
-            state.bounds.origin.x + self.border_width,
-            state.bounds.origin.y + self.border_width,
-            state.bounds.size.width - 2.0 * self.border_width,
+            state.bounds.origin.x,
+            state.bounds.origin.y,
+            state.bounds.size.width,
             self.title_bar_height,
         );
 
-        commands.push(RenderCommand::Rectangle {
+        let title_bar_start_color = if state.focused {
+            Color::new(0.98, 0.98, 0.98, 0.95)
+        } else {
+            Color::new(0.94, 0.94, 0.96, 0.9)
+        };
+
+        let title_bar_end_color = if state.focused {
+            Color::new(0.96, 0.96, 0.96, 0.95)
+        } else {
+            Color::new(0.92, 0.92, 0.94, 0.9)
+        };
+
+        commands.push(RenderCommand::GradientRectangle {
             rect: title_bar_rect,
-            color: self.title_bar_color,
+            start_color: title_bar_start_color,
+            end_color: title_bar_end_color,
+            direction: std::f32::consts::PI / 2.0, // Top to bottom
+            transform: crate::geometry::Transform::identity(),
+            z_index: z_index + 0.2,
+        });
+
+        // Title bar separator line
+        let separator_rect = Rect::new(
+            state.bounds.origin.x,
+            state.bounds.origin.y + self.title_bar_height - 0.5,
+            state.bounds.size.width,
+            0.5,
+        );
+
+        commands.push(RenderCommand::Rectangle {
+            rect: separator_rect,
+            color: Color::new(0.0, 0.0, 0.0, 0.05),
+            transform: crate::geometry::Transform::identity(),
+            z_index: z_index + 0.3,
+        });
+
+        // Traffic light buttons (macOS style)
+        self.render_traffic_lights(state, z_index + 0.4, &mut commands);
+
+        // Window content background
+        let content_rect = Rect::new(
+            state.bounds.origin.x,
+            state.bounds.origin.y + self.title_bar_height,
+            state.bounds.size.width,
+            state.bounds.size.height - self.title_bar_height,
+        );
+
+        commands.push(RenderCommand::RoundedRectangle {
+            rect: content_rect,
+            corner_radius: self.corner_radius, // Only round bottom corners
+            color: Color::new(1.0, 1.0, 1.0, 0.98),
             transform: crate::geometry::Transform::identity(),
             z_index: z_index + 0.1,
         });
 
-        // Window content background
-        let content_rect = Rect::new(
-            state.bounds.origin.x + self.border_width,
-            state.bounds.origin.y + self.border_width + self.title_bar_height,
-            state.bounds.size.width - 2.0 * self.border_width,
-            state.bounds.size.height - 2.0 * self.border_width - self.title_bar_height,
-        );
+        commands
+    }
 
-        commands.push(RenderCommand::Rectangle {
-            rect: content_rect,
-            color: Color::from_hex("#1e1e1e").unwrap_or(Color::new(0.12, 0.12, 0.12, 1.0)),
+    /// Render macOS-style traffic light buttons
+    fn render_traffic_lights(&self, state: &WindowState, z_index: f32, commands: &mut Vec<RenderCommand>) {
+        let button_size = 14.0;
+        let button_spacing = 8.0;
+        let margin_left = 16.0;
+        let margin_top = (self.title_bar_height - button_size) / 2.0;
+
+        let button_y = state.bounds.origin.y + margin_top;
+
+        // Close button (red)
+        let close_x = state.bounds.origin.x + margin_left;
+        let close_rect = Rect::new(close_x, button_y, button_size, button_size);
+
+        let close_color = if state.focused {
+            Color::from_hex("#FF5F57").unwrap_or(Color::RED)
+        } else {
+            Color::new(0.82, 0.82, 0.84, 1.0) // Gray when unfocused
+        };
+
+        commands.push(RenderCommand::RoundedRectangle {
+            rect: close_rect,
+            corner_radius: button_size / 2.0, // Perfect circle
+            color: close_color,
             transform: crate::geometry::Transform::identity(),
-            z_index: z_index + 0.05,
+            z_index,
         });
 
-        commands
+        // Minimize button (yellow)
+        let minimize_x = close_x + button_size + button_spacing;
+        let minimize_rect = Rect::new(minimize_x, button_y, button_size, button_size);
+
+        let minimize_color = if state.focused {
+            Color::from_hex("#FFBD2E").unwrap_or(Color::new(1.0, 0.74, 0.18, 1.0))
+        } else {
+            Color::new(0.82, 0.82, 0.84, 1.0)
+        };
+
+        commands.push(RenderCommand::RoundedRectangle {
+            rect: minimize_rect,
+            corner_radius: button_size / 2.0,
+            color: minimize_color,
+            transform: crate::geometry::Transform::identity(),
+            z_index,
+        });
+
+        // Maximize button (green)
+        let maximize_x = minimize_x + button_size + button_spacing;
+        let maximize_rect = Rect::new(maximize_x, button_y, button_size, button_size);
+
+        let maximize_color = if state.focused {
+            Color::from_hex("#28CA42").unwrap_or(Color::GREEN)
+        } else {
+            Color::new(0.82, 0.82, 0.84, 1.0)
+        };
+
+        commands.push(RenderCommand::RoundedRectangle {
+            rect: maximize_rect,
+            corner_radius: button_size / 2.0,
+            color: maximize_color,
+            transform: crate::geometry::Transform::identity(),
+            z_index,
+        });
+
+        // Add subtle button borders for depth
+        if state.focused {
+            for (rect, base_color) in [
+                (close_rect, close_color),
+                (minimize_rect, minimize_color),
+                (maximize_rect, maximize_color),
+            ] {
+                let border_color = Color::new(
+                    base_color.r * 0.8,
+                    base_color.g * 0.8,
+                    base_color.b * 0.8,
+                    0.8,
+                );
+
+                let border_rect = Rect::new(
+                    rect.origin.x - 0.5,
+                    rect.origin.y - 0.5,
+                    rect.size.width + 1.0,
+                    rect.size.height + 1.0,
+                );
+
+                commands.push(RenderCommand::RoundedRectangle {
+                    rect: border_rect,
+                    corner_radius: (button_size + 1.0) / 2.0,
+                    color: border_color,
+                    transform: crate::geometry::Transform::identity(),
+                    z_index: z_index - 0.1,
+                });
+            }
+        }
     }
 
     /// Get content area (excluding decorations)
