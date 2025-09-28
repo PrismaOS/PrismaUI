@@ -764,11 +764,20 @@ impl UIElement for Container {
                 }
             }
             LayoutDirection::Stack => {
-                // Special handling for stack layout - position taskbar at bottom
+                // Special handling for stack layout - position dock at bottom center
                 for child in self.children.iter_mut() {
-                    if child.id() == "taskbar" {
-                        // Position taskbar at bottom
-                        let taskbar_height = 48.0; // Fixed height
+                    if child.id() == "dock" {
+                        // Position dock at bottom center with macOS styling
+                        let dock_size = child.measure(content_bounds.size);
+                        let dock_margin_bottom = 8.0; // macOS dock margin
+                        let dock_x = content_bounds.origin.x + (content_bounds.size.width - dock_size.width) / 2.0;
+                        let dock_y = content_bounds.origin.y + content_bounds.size.height - dock_size.height - dock_margin_bottom;
+
+                        let dock_bounds = Rect::new(dock_x, dock_y, dock_size.width, dock_size.height);
+                        child.arrange(dock_bounds);
+                    } else if child.id() == "taskbar" {
+                        // Legacy taskbar support
+                        let taskbar_height = 48.0;
                         let taskbar_bounds = Rect::new(
                             content_bounds.origin.x,
                             content_bounds.origin.y + content_bounds.size.height - taskbar_height,
@@ -777,14 +786,8 @@ impl UIElement for Container {
                         );
                         child.arrange(taskbar_bounds);
                     } else {
-                        // Other children fill remaining space
-                        let remaining_bounds = Rect::new(
-                            content_bounds.origin.x,
-                            content_bounds.origin.y,
-                            content_bounds.size.width,
-                            content_bounds.size.height - 48.0, // Leave space for taskbar
-                        );
-                        child.arrange(remaining_bounds);
+                        // Other children (wallpaper) fill entire space
+                        child.arrange(content_bounds);
                     }
                 }
             }

@@ -21,9 +21,9 @@ async fn main() -> Result<()> {
     let config = CompositorConfig {
         title: "PrismaUI - GPU Desktop Environment".to_string(),
         size: winit::dpi::PhysicalSize::new(1920, 1080),
-        target_fps: 60,
-        vsync: true,
-        debug_mode: true,
+        target_fps: 144, // Higher refresh rate for smoother experience
+        vsync: false, // Disable vsync for maximum performance
+        debug_mode: false, // Disable debug for better performance
     };
 
     println!("🔧 Initializing compositor with config:");

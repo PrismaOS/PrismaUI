@@ -142,6 +142,8 @@ impl Compositor {
         let mut last_update = std::time::Instant::now();
         let target_frame_time = Duration::from_secs_f32(1.0 / self.config.target_fps as f32);
 
+        // Control flow will be set in the event loop
+
         event_loop.run(move |event, target: &EventLoopWindowTarget<()>| {
             target.set_control_flow(ControlFlow::Poll);
 
@@ -256,7 +258,9 @@ impl Compositor {
                             if now.duration_since(last_update) >= target_frame_time || !self.config.vsync {
                                 self.update();
                                 if let Err(e) = self.render() {
-                                    eprintln!("Render error: {}", e);
+                                    if self.config.debug_mode {
+                                        eprintln!("Render error: {}", e);
+                                    }
                                 }
                                 last_update = now;
                             }
@@ -307,68 +311,98 @@ impl Compositor {
         Ok(())
     }
 
-    /// Create the desktop UI (taskbar, desktop icons, etc.)
+    /// Create macOS-style desktop UI with dock and proper layout
     fn create_desktop_ui(&mut self) {
-
-        // Create a simple taskbar for now with fixed height at bottom
-        let mut taskbar = Container::new("taskbar".to_string())
+        // Create macOS-style dock at the bottom
+        let mut dock = Container::new("dock".to_string())
             .with_direction(LayoutDirection::Horizontal);
 
-        // Set taskbar constraints - full width, 48px height, positioned at bottom
-        taskbar.layout_mut().constraints = LayoutConstraints {
-            preferred_size: Some(Size::new(self.context.size.width as f32, 48.0)),
-            min_size: Size::new(0.0, 48.0),
-            max_size: Size::new(f32::INFINITY, 48.0),
+        // Dock constraints - centered, glass effect, proper macOS sizing
+        dock.layout_mut().constraints = LayoutConstraints {
+            preferred_size: Some(Size::new(400.0, 68.0)), // macOS dock height
+            min_size: Size::new(300.0, 68.0),
+            max_size: Size::new(600.0, 68.0),
             flex_grow: 0.0,
             flex_shrink: 0.0,
             aspect_ratio: None,
         };
 
-        // Add some taskbar buttons with fixed sizes
-        let mut start_button = Button::new("start_button".to_string(), "Start".to_string())
+        // macOS-style dock background (translucent glass effect)
+        let mut dock_background = Rectangle::new("dock_background".to_string())
+            .with_color(Color::new(0.1, 0.1, 0.1, 0.8)) // Dark translucent
+            .with_corner_radius(16.0); // Rounded corners like macOS
+
+        // Create dock app icons with proper macOS styling
+        let mut finder_icon = Button::new("finder".to_string(), "📁".to_string())
             .with_colors(
-                Color::from_hex("#0078d4").unwrap_or(Color::BLUE),
-                Color::from_hex("#106ebe").unwrap_or(Color::BLUE),
-                Color::from_hex("#005a9e").unwrap_or(Color::BLUE),
+                Color::new(0.2, 0.2, 0.2, 0.9), // Subtle background
+                Color::new(0.3, 0.3, 0.3, 0.9), // Hover
+                Color::new(0.4, 0.4, 0.4, 0.9), // Active
             );
-        start_button.layout_mut().constraints = LayoutConstraints {
-            preferred_size: Some(Size::new(80.0, 40.0)),
-            min_size: Size::new(60.0, 32.0),
-            max_size: Size::new(100.0, 48.0),
+        finder_icon.layout_mut().constraints = LayoutConstraints {
+            preferred_size: Some(Size::new(52.0, 52.0)), // macOS dock icon size
+            min_size: Size::new(48.0, 48.0),
+            max_size: Size::new(64.0, 64.0),
             flex_grow: 0.0,
             flex_shrink: 0.0,
-            aspect_ratio: None,
+            aspect_ratio: Some(1.0), // Square icons
         };
 
-        let mut file_manager_button = Button::new("file_manager_button".to_string(), "Files".to_string());
-        file_manager_button.layout_mut().constraints = LayoutConstraints {
-            preferred_size: Some(Size::new(80.0, 40.0)),
-            min_size: Size::new(60.0, 32.0),
-            max_size: Size::new(100.0, 48.0),
+        let mut safari_icon = Button::new("safari".to_string(), "🌐".to_string())
+            .with_colors(
+                Color::new(0.2, 0.2, 0.2, 0.9),
+                Color::new(0.3, 0.3, 0.3, 0.9),
+                Color::new(0.4, 0.4, 0.4, 0.9),
+            );
+        safari_icon.layout_mut().constraints = LayoutConstraints {
+            preferred_size: Some(Size::new(52.0, 52.0)),
+            min_size: Size::new(48.0, 48.0),
+            max_size: Size::new(64.0, 64.0),
             flex_grow: 0.0,
             flex_shrink: 0.0,
-            aspect_ratio: None,
+            aspect_ratio: Some(1.0),
         };
 
-        let mut terminal_button = Button::new("terminal_button".to_string(), "Terminal".to_string());
-        terminal_button.layout_mut().constraints = LayoutConstraints {
-            preferred_size: Some(Size::new(80.0, 40.0)),
-            min_size: Size::new(60.0, 32.0),
-            max_size: Size::new(100.0, 48.0),
+        let mut terminal_icon = Button::new("terminal".to_string(), "⚫".to_string())
+            .with_colors(
+                Color::new(0.2, 0.2, 0.2, 0.9),
+                Color::new(0.3, 0.3, 0.3, 0.9),
+                Color::new(0.4, 0.4, 0.4, 0.9),
+            );
+        terminal_icon.layout_mut().constraints = LayoutConstraints {
+            preferred_size: Some(Size::new(52.0, 52.0)),
+            min_size: Size::new(48.0, 48.0),
+            max_size: Size::new(64.0, 64.0),
             flex_grow: 0.0,
             flex_shrink: 0.0,
-            aspect_ratio: None,
+            aspect_ratio: Some(1.0),
         };
 
-        taskbar.add_child(Box::new(start_button));
-        taskbar.add_child(Box::new(file_manager_button));
-        taskbar.add_child(Box::new(terminal_button));
+        let mut settings_icon = Button::new("settings".to_string(), "⚙️".to_string())
+            .with_colors(
+                Color::new(0.2, 0.2, 0.2, 0.9),
+                Color::new(0.3, 0.3, 0.3, 0.9),
+                Color::new(0.4, 0.4, 0.4, 0.9),
+            );
+        settings_icon.layout_mut().constraints = LayoutConstraints {
+            preferred_size: Some(Size::new(52.0, 52.0)),
+            min_size: Size::new(48.0, 48.0),
+            max_size: Size::new(64.0, 64.0),
+            flex_grow: 0.0,
+            flex_shrink: 0.0,
+            aspect_ratio: Some(1.0),
+        };
 
-        // Create desktop container
+        // Add icons to dock with proper spacing
+        dock.add_child(Box::new(finder_icon));
+        dock.add_child(Box::new(safari_icon));
+        dock.add_child(Box::new(terminal_icon));
+        dock.add_child(Box::new(settings_icon));
+
+        // Create desktop container with stack layout
         let mut desktop = Container::new("desktop".to_string())
             .with_direction(LayoutDirection::Stack);
 
-        // Desktop takes full screen
         desktop.layout_mut().constraints = LayoutConstraints {
             preferred_size: Some(Size::new(self.context.size.width as f32, self.context.size.height as f32)),
             min_size: Size::new(0.0, 0.0),
@@ -378,9 +412,9 @@ impl Compositor {
             aspect_ratio: None,
         };
 
-        // Add wallpaper background - full screen
+        // macOS-style gradient wallpaper
         let mut wallpaper = Rectangle::new("wallpaper".to_string())
-            .with_color(Color::from_hex("#1e3a8a").unwrap_or(Color::BLUE));
+            .with_color(Color::from_hex("#4c1d95").unwrap_or(Color::new(0.3, 0.11, 0.58, 1.0))); // macOS purple gradient
         wallpaper.layout_mut().constraints = LayoutConstraints {
             preferred_size: Some(Size::new(self.context.size.width as f32, self.context.size.height as f32)),
             min_size: Size::new(0.0, 0.0),
@@ -391,40 +425,75 @@ impl Compositor {
         };
 
         desktop.add_child(Box::new(wallpaper));
-        desktop.add_child(Box::new(taskbar));
+        desktop.add_child(Box::new(dock));
 
         self.desktop_ui.set_root(Box::new(desktop));
     }
 
-    /// Create a demo window for testing
+    /// Create a demo window with macOS-style design
     fn create_demo_window(&mut self) {
-        // Create demo window content
+        // Create macOS-style window content with proper styling
         let mut demo_content = Container::new("demo_content".to_string())
             .with_direction(LayoutDirection::Vertical);
 
-        // Add title
-        let title = Text::new("demo_title".to_string(), "Demo Application".to_string())
-            .with_font_size(18.0)
-            .with_color(Color::WHITE);
+        // Window content padding
+        // demo_content.layout_mut().padding = crate::ui::Padding {
+        //     top: 16.0,
+        //     bottom: 16.0,
+        //     left: 16.0,
+        //     right: 16.0,
+        // };
 
-        // Add some buttons
-        let button1 = Button::new("demo_button1".to_string(), "Click Me!".to_string());
-        let button2 = Button::new("demo_button2".to_string(), "Another Button".to_string());
+        // macOS-style title with proper typography
+        let title = Text::new("demo_title".to_string(), "PrismaUI Desktop Environment".to_string())
+            .with_font_size(20.0)
+            .with_color(Color::new(0.1, 0.1, 0.1, 1.0)); // Dark text for contrast
 
-        // Add description text
+        // macOS-style buttons with proper colors
+        let mut button1 = Button::new("demo_button1".to_string(), "Open Finder".to_string())
+            .with_colors(
+                Color::new(0.0, 0.48, 1.0, 1.0),     // macOS blue
+                Color::new(0.0, 0.42, 0.9, 1.0),     // Hover
+                Color::new(0.0, 0.36, 0.8, 1.0),     // Active
+            );
+        button1.layout_mut().constraints = LayoutConstraints {
+            preferred_size: Some(Size::new(140.0, 32.0)),
+            min_size: Size::new(100.0, 28.0),
+            max_size: Size::new(200.0, 36.0),
+            flex_grow: 0.0,
+            flex_shrink: 0.0,
+            aspect_ratio: None,
+        };
+
+        let mut button2 = Button::new("demo_button2".to_string(), "Launch Terminal".to_string())
+            .with_colors(
+                Color::new(0.55, 0.55, 0.55, 1.0),   // macOS gray
+                Color::new(0.65, 0.65, 0.65, 1.0),   // Hover
+                Color::new(0.45, 0.45, 0.45, 1.0),   // Active
+            );
+        button2.layout_mut().constraints = LayoutConstraints {
+            preferred_size: Some(Size::new(140.0, 32.0)),
+            min_size: Size::new(100.0, 28.0),
+            max_size: Size::new(200.0, 36.0),
+            flex_grow: 0.0,
+            flex_shrink: 0.0,
+            aspect_ratio: None,
+        };
+
+        // Subtle description text
         let description = Text::new("demo_description".to_string(),
-            "This is a demo window running on the GPU-accelerated compositor.".to_string())
-            .with_font_size(12.0)
-            .with_color(Color::new(0.8, 0.8, 0.8, 1.0));
+            "A high-performance GPU-accelerated desktop environment built with WGPU and Rust.".to_string())
+            .with_font_size(14.0)
+            .with_color(Color::new(0.4, 0.4, 0.4, 1.0)); // Subtle gray
 
         demo_content.add_child(Box::new(title));
         demo_content.add_child(Box::new(button1));
         demo_content.add_child(Box::new(button2));
         demo_content.add_child(Box::new(description));
 
-        // Create the window
+        // Create the window with macOS-style decorations
         let window_id = self.window_manager.create_window(
-            "Demo Window".to_string(),
+            "PrismaUI Demo".to_string(), // macOS-style window title
             Box::new(demo_content),
         );
 
@@ -509,11 +578,13 @@ impl Compositor {
             all_layers.extend(desktop_layers);
             all_layers.extend(window_layers);
 
-            // Debug: Print total number of render commands
-            let total_commands: usize = all_layers.iter().map(|layer| layer.commands.len()).sum();
-            if self.frame_count % 60 == 0 && total_commands > 0 {
-                println!("🎨 Frame {}: {} render layers, {} total commands",
-                    self.frame_count, all_layers.len(), total_commands);
+            // Debug: Print total number of render commands (less frequent)
+            if self.config.debug_mode {
+                let total_commands: usize = all_layers.iter().map(|layer| layer.commands.len()).sum();
+                if self.frame_count % 300 == 0 && total_commands > 0 {
+                    println!("🎨 Frame {}: {} render layers, {} total commands",
+                        self.frame_count, all_layers.len(), total_commands);
+                }
             }
 
             // Begin frame and render
@@ -596,9 +667,9 @@ impl Compositor {
         let asset_stats = self.asset_manager.memory_stats();
         self.performance_metrics.memory_usage_mb = asset_stats.total_memory_mb() as f32;
 
-        // Print debug info if enabled
-        if self.config.debug_mode && self.frame_count % 60 == 0 {
-            println!("Frame: {}, FPS: {:.1}, Frame Time: {:.2}ms, Memory: {:.1}MB, Draw Calls: {}, Triangles: {}",
+        // Print debug info if enabled (less frequent)
+        if self.config.debug_mode && self.frame_count % 600 == 0 {
+            println!("🚀 Performance: Frame {}, FPS: {:.1}, Frame Time: {:.2}ms, Memory: {:.1}MB, Draw Calls: {}, Triangles: {}",
                 self.frame_count,
                 self.performance_metrics.fps,
                 self.performance_metrics.frame_time_ms,
