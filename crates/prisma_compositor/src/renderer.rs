@@ -1,609 +1,633 @@
-/// High-performance WGPU renderer with multi-threaded command recording
-use std::sync::{Arc, RwLock, Mutex};
-use std::collections::HashMap;
-use wgpu::*;
-use bytemuck::{Pod, Zeroable};
-
+/// High-performance GPU renderer for UI elements
+use wgpu::{RenderPass, RenderPipeline, BindGroup};
 use crate::{
-    core::CompositorConfig,
-    ui::{UIRect, UILayer},
-    memory::{BufferPool, TexturePool},
+    core::{Device, Context, Buffer as TypedBuffer},
+    geometry::{Vertex, Color, Rect, Transform},
 };
 
-/// Render commands for multi-threaded execution
+/// Render command for GPU execution - highly optimized
 #[derive(Debug, Clone)]
 pub enum RenderCommand {
-    /// Draw a colored rectangle
-    DrawQuad {
-        rect: UIRect,
-        texture: Option<u32>,
-        color: [f32; 4],
+    /// Draw a solid rectangle with transform
+    Rectangle {
+        rect: Rect,
+        color: Color,
+        transform: Transform,
+        z_index: f32,
     },
-    /// Draw text with GPU acceleration
-    DrawText {
-        text: String,
-        position: [f32; 2],
-        font: u32,
-        color: [f32; 4],
+    /// Draw a textured rectangle (image, icon, etc.)
+    TexturedRectangle {
+        rect: Rect,
+        texture_id: u32,
+        uv_rect: Rect, // UV coordinates in texture
+        color: Color,  // Tint color
+        transform: Transform,
+        z_index: f32,
     },
-    /// Draw an image with optional transforms
-    DrawImage {
-        image: u32,
-        rect: UIRect,
-        opacity: f32,
+    /// Draw text (uses glyph atlas)
+    Text {
+        rect: Rect,
+        glyph_atlas_region: Rect,
+        color: Color,
+        transform: Transform,
+        z_index: f32,
     },
-    /// Begin a render pass
-    BeginRenderPass {
-        target: u32,
+    /// Draw a rounded rectangle
+    RoundedRectangle {
+        rect: Rect,
+        corner_radius: f32,
+        color: Color,
+        transform: Transform,
+        z_index: f32,
     },
-    /// End current render pass
-    EndRenderPass,
+    /// Draw a gradient rectangle
+    GradientRectangle {
+        rect: Rect,
+        start_color: Color,
+        end_color: Color,
+        direction: f32, // angle in radians
+        transform: Transform,
+        z_index: f32,
+    },
+    // TODO: Animation commands will be added here
+    // AnimatedRectangle { ... },
+    // AnimatedTransform { ... },
 }
 
-/// Vertex data for GPU rendering
-#[repr(C)]
-#[derive(Copy, Clone, Debug, Pod, Zeroable)]
-pub struct Vertex {
-    pub position: [f32; 2],
-    pub tex_coords: [f32; 2],
-    pub color: [f32; 4],
-}
-
-impl Vertex {
-    const ATTRIBS: [VertexAttribute; 3] = [
-        VertexAttribute {
-            offset: 0,
-            shader_location: 0,
-            format: VertexFormat::Float32x2,
-        },
-        VertexAttribute {
-            offset: std::mem::size_of::<[f32; 2]>() as BufferAddress,
-            shader_location: 1,
-            format: VertexFormat::Float32x2,
-        },
-        VertexAttribute {
-            offset: std::mem::size_of::<[f32; 4]>() as BufferAddress,
-            shader_location: 2,
-            format: VertexFormat::Float32x4,
-        },
-    ];
-
-    pub fn desc() -> VertexBufferLayout<'static> {
-        VertexBufferLayout {
-            array_stride: std::mem::size_of::<Vertex>() as BufferAddress,
-            step_mode: VertexStepMode::Vertex,
-            attributes: &Self::ATTRIBS,
+impl RenderCommand {
+    pub fn z_index(&self) -> f32 {
+        match self {
+            RenderCommand::Rectangle { z_index, .. }
+            | RenderCommand::TexturedRectangle { z_index, .. }
+            | RenderCommand::Text { z_index, .. }
+            | RenderCommand::RoundedRectangle { z_index, .. }
+            | RenderCommand::GradientRectangle { z_index, .. } => *z_index,
         }
     }
 }
 
-/// Instance data for efficient batch rendering
-#[repr(C)]
-#[derive(Copy, Clone, Debug, Pod, Zeroable)]
-pub struct QuadInstance {
-    pub position: [f32; 2],
-    pub size: [f32; 2],
-    pub color: [f32; 4],
-    pub tex_coords: [f32; 4], // x, y, width, height in texture atlas
-    pub texture_index: u32,
-    pub flags: u32, // Various rendering flags
+/// Render layer for depth sorting and batching
+#[derive(Debug, Clone)]
+pub struct RenderLayer {
+    pub z_index: f32,
+    pub commands: Vec<RenderCommand>,
+    pub clip_rect: Option<Rect>,
 }
 
-impl QuadInstance {
-    const ATTRIBS: [VertexAttribute; 6] = [
-        VertexAttribute {
-            offset: 0,
-            shader_location: 3,
-            format: VertexFormat::Float32x2,
-        },
-        VertexAttribute {
-            offset: std::mem::size_of::<[f32; 2]>() as BufferAddress,
-            shader_location: 4,
-            format: VertexFormat::Float32x2,
-        },
-        VertexAttribute {
-            offset: std::mem::size_of::<[f32; 4]>() as BufferAddress,
-            shader_location: 5,
-            format: VertexFormat::Float32x4,
-        },
-        VertexAttribute {
-            offset: std::mem::size_of::<[f32; 8]>() as BufferAddress,
-            shader_location: 6,
-            format: VertexFormat::Float32x4,
-        },
-        VertexAttribute {
-            offset: std::mem::size_of::<[f32; 12]>() as BufferAddress,
-            shader_location: 7,
-            format: VertexFormat::Uint32,
-        },
-        VertexAttribute {
-            offset: std::mem::size_of::<[f32; 12]>() as BufferAddress + std::mem::size_of::<u32>() as BufferAddress,
-            shader_location: 8,
-            format: VertexFormat::Uint32,
-        },
-    ];
-
-    pub fn desc() -> VertexBufferLayout<'static> {
-        VertexBufferLayout {
-            array_stride: std::mem::size_of::<QuadInstance>() as BufferAddress,
-            step_mode: VertexStepMode::Instance,
-            attributes: &Self::ATTRIBS,
+impl RenderLayer {
+    pub fn new(z_index: f32) -> Self {
+        Self {
+            z_index,
+            commands: Vec::new(),
+            clip_rect: None,
         }
+    }
+
+    pub fn add_command(&mut self, command: RenderCommand) {
+        self.commands.push(command);
+    }
+
+    pub fn set_clip_rect(&mut self, rect: Rect) {
+        self.clip_rect = Some(rect);
+    }
+
+    pub fn sort_commands_by_z(&mut self) {
+        self.commands.sort_by(|a, b| a.z_index().partial_cmp(&b.z_index()).unwrap());
     }
 }
 
-/// Uniform data for the renderer
+/// Uniform data for shaders
 #[repr(C)]
-#[derive(Copy, Clone, Debug, Pod, Zeroable)]
-pub struct RenderUniforms {
-    pub view_projection: [[f32; 4]; 4],
-    pub screen_size: [f32; 2],
+#[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct Uniforms {
+    pub projection: [[f32; 4]; 4],
     pub time: f32,
-    pub frame_count: u32,
+    pub _padding: [f32; 3],
 }
 
-/// High-performance render frame with multi-threading support
-pub struct RenderFrame {
-    pub surface_texture: SurfaceTexture,
-    pub device: Arc<Device>,
-    pub queue: Arc<Queue>,
-    pub config: CompositorConfig,
+/// Batch for efficient GPU rendering
+#[derive(Debug)]
+pub struct RenderBatch {
+    pub vertices: Vec<Vertex>,
+    pub indices: Vec<u32>,
+    pub texture_id: Option<u32>,
+    pub shader_type: ShaderType,
 }
 
-impl RenderFrame {
-    /// Create a new render frame
-    pub fn new(
-        surface_texture: SurfaceTexture,
-        device: Arc<Device>,
-        queue: Arc<Queue>,
-        config: &CompositorConfig,
-    ) -> Self {
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum ShaderType {
+    Solid,
+    Textured,
+    Text,
+    RoundedRect,
+    Gradient,
+    // TODO: Add animation shader types
+    // AnimatedSolid,
+    // AnimatedTextured,
+}
+
+impl RenderBatch {
+    pub fn new(shader_type: ShaderType) -> Self {
         Self {
-            surface_texture,
-            device,
-            queue,
-            config: config.clone(),
+            vertices: Vec::new(),
+            indices: Vec::new(),
+            texture_id: None,
+            shader_type,
         }
     }
 
-    /// Present the frame to the surface
-    pub fn present(self) {
-        self.surface_texture.present();
+    pub fn add_quad(&mut self, vertices: [Vertex; 4]) {
+        let start_index = self.vertices.len() as u32;
+
+        // Add vertices
+        self.vertices.extend_from_slice(&vertices);
+
+        // Add indices for two triangles
+        self.indices.extend_from_slice(&[
+            start_index, start_index + 1, start_index + 2,
+            start_index, start_index + 2, start_index + 3,
+        ]);
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.vertices.is_empty()
+    }
+
+    pub fn clear(&mut self) {
+        self.vertices.clear();
+        self.indices.clear();
+        self.texture_id = None;
     }
 }
 
-impl Clone for RenderFrame {
-    fn clone(&self) -> Self {
-        // Note: This is a simplified clone for the example
-        // In reality, you'd want to handle this more carefully
-        Self {
-            surface_texture: unsafe { std::mem::zeroed() }, // This is not safe in real code
-            device: Arc::clone(&self.device),
-            queue: Arc::clone(&self.queue),
-            config: self.config.clone(),
-        }
-    }
-}
-
-/// GPU-accelerated batch renderer
-pub struct BatchRenderer {
-    device: Arc<Device>,
-    queue: Arc<Queue>,
-
-    /// Rendering pipelines
-    quad_pipeline: RenderPipeline,
+/// High-performance renderer optimized for UI
+pub struct Renderer {
+    // Render pipelines for different shader types
+    solid_pipeline: RenderPipeline,
+    textured_pipeline: RenderPipeline,
     text_pipeline: RenderPipeline,
-    image_pipeline: RenderPipeline,
+    rounded_rect_pipeline: RenderPipeline,
+    gradient_pipeline: RenderPipeline,
 
-    /// Shared resources
-    quad_vertex_buffer: Buffer,
-    index_buffer: Buffer,
-    uniform_buffer: Buffer,
-    uniform_bind_group_layout: BindGroupLayout,
-    texture_bind_group_layout: BindGroupLayout,
+    // GPU buffers with dynamic sizing
+    vertex_buffer: TypedBuffer<Vertex>,
+    index_buffer: TypedBuffer<u32>,
+    uniform_buffer: TypedBuffer<Uniforms>,
 
-    /// Instance batching
-    max_quads_per_batch: usize,
-    quad_instances: Vec<QuadInstance>,
-    quad_instance_buffer: Buffer,
+    // Bind groups
+    uniform_bind_group: BindGroup,
+    texture_bind_group_layout: wgpu::BindGroupLayout,
 
-    /// Texture management
-    texture_array: Texture,
-    texture_array_view: TextureView,
-    sampler: Sampler,
+    // Batching system
+    batches: Vec<RenderBatch>,
+    current_batch: Option<RenderBatch>,
+
+    // Stats for performance monitoring
+    pub stats: RenderStats,
 }
 
-impl BatchRenderer {
-    /// Create a new batch renderer
-    pub async fn new(
-        device: Arc<Device>,
-        queue: Arc<Queue>,
-        surface_format: TextureFormat,
-        config: &CompositorConfig,
-    ) -> Result<Self, Box<dyn std::error::Error>> {
-        // Create shader modules
-        let quad_shader = device.create_shader_module(ShaderModuleDescriptor {
-            label: Some("Quad Shader"),
-            source: ShaderSource::Wgsl(include_str!("shaders/quad.wgsl").into()),
-        });
+#[derive(Debug, Default)]
+pub struct RenderStats {
+    pub draw_calls: u32,
+    pub vertices_rendered: u32,
+    pub triangles_rendered: u32,
+    pub batches_created: u32,
+    pub frame_time_ms: f32,
+}
 
-        let text_shader = device.create_shader_module(ShaderModuleDescriptor {
-            label: Some("Text Shader"),
-            source: ShaderSource::Wgsl(include_str!("shaders/text.wgsl").into()),
-        });
+impl Renderer {
+    /// Create new renderer with optimized pipelines
+    pub fn new(device: &Device, surface_format: wgpu::TextureFormat) -> anyhow::Result<Self> {
+        // Create uniform buffer
+        let mut uniform_buffer = TypedBuffer::new(
+            &device.device,
+            wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            1,
+            Some("Uniform Buffer"),
+        );
 
-        let image_shader = device.create_shader_module(ShaderModuleDescriptor {
-            label: Some("Image Shader"),
-            source: ShaderSource::Wgsl(include_str!("shaders/image.wgsl").into()),
-        });
+        // Initialize with identity projection
+        let uniforms = Uniforms {
+            projection: [
+                [1.0, 0.0, 0.0, 0.0],
+                [0.0, 1.0, 0.0, 0.0],
+                [0.0, 0.0, 1.0, 0.0],
+                [0.0, 0.0, 0.0, 1.0],
+            ],
+            time: 0.0,
+            _padding: [0.0; 3],
+        };
+        uniform_buffer.write(&device.queue, &[uniforms]);
 
         // Create bind group layouts
-        let uniform_bind_group_layout = device.create_bind_group_layout(&BindGroupLayoutDescriptor {
+        let uniform_bind_group_layout = device.device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("Uniform Bind Group Layout"),
-            entries: &[
-                BindGroupLayoutEntry {
-                    binding: 0,
-                    visibility: ShaderStages::VERTEX | ShaderStages::FRAGMENT,
-                    ty: BindingType::Buffer {
-                        ty: BufferBindingType::Uniform,
-                        has_dynamic_offset: false,
-                        min_binding_size: None,
-                    },
-                    count: None,
+            entries: &[wgpu::BindGroupLayoutEntry {
+                binding: 0,
+                visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Uniform,
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
                 },
-            ],
+                count: None,
+            }],
         });
 
-        let texture_bind_group_layout = device.create_bind_group_layout(&BindGroupLayoutDescriptor {
+        let texture_bind_group_layout = device.device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("Texture Bind Group Layout"),
             entries: &[
-                BindGroupLayoutEntry {
+                wgpu::BindGroupLayoutEntry {
                     binding: 0,
-                    visibility: ShaderStages::FRAGMENT,
-                    ty: BindingType::Texture {
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
                         multisampled: false,
-                        view_dimension: TextureViewDimension::D2Array,
-                        sample_type: TextureSampleType::Float { filterable: true },
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
                     },
                     count: None,
                 },
-                BindGroupLayoutEntry {
+                wgpu::BindGroupLayoutEntry {
                     binding: 1,
-                    visibility: ShaderStages::FRAGMENT,
-                    ty: BindingType::Sampler(SamplerBindingType::Filtering),
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
                     count: None,
                 },
             ],
         });
 
-        // Create pipeline layout
-        let pipeline_layout = device.create_pipeline_layout(&PipelineLayoutDescriptor {
+        // Create uniform bind group
+        let uniform_bind_group = device.device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("Uniform Bind Group"),
+            layout: &uniform_bind_group_layout,
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: uniform_buffer.buffer.as_entire_binding(),
+            }],
+        });
+
+        // Create shaders
+        let solid_shader = device.device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("Solid Shader"),
+            source: wgpu::ShaderSource::Wgsl(include_str!("shaders/solid.wgsl").into()),
+        });
+
+        let textured_shader = device.device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("Textured Shader"),
+            source: wgpu::ShaderSource::Wgsl(include_str!("shaders/textured.wgsl").into()),
+        });
+
+        let text_shader = device.device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("Text Shader"),
+            source: wgpu::ShaderSource::Wgsl(include_str!("shaders/text.wgsl").into()),
+        });
+
+        let rounded_rect_shader = device.device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("Rounded Rect Shader"),
+            source: wgpu::ShaderSource::Wgsl(include_str!("shaders/rounded_rect.wgsl").into()),
+        });
+
+        let gradient_shader = device.device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("Gradient Shader"),
+            source: wgpu::ShaderSource::Wgsl(include_str!("shaders/gradient.wgsl").into()),
+        });
+
+        // Create render pipeline layout
+        let pipeline_layout = device.device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("Render Pipeline Layout"),
             bind_group_layouts: &[&uniform_bind_group_layout, &texture_bind_group_layout],
             push_constant_ranges: &[],
         });
 
         // Create render pipelines
-        let quad_pipeline = device.create_render_pipeline(&RenderPipelineDescriptor {
-            label: Some("Quad Render Pipeline"),
-            layout: Some(&pipeline_layout),
-            vertex: VertexState {
-                module: &quad_shader,
-                entry_point: "vs_main",
-                buffers: &[Vertex::desc(), QuadInstance::desc()],
-            },
-            fragment: Some(FragmentState {
-                module: &quad_shader,
-                entry_point: "fs_main",
-                targets: &[Some(ColorTargetState {
-                    format: surface_format,
-                    blend: Some(BlendState::ALPHA_BLENDING),
-                    write_mask: ColorWrites::ALL,
-                })],
-            }),
-            primitive: PrimitiveState {
-                topology: PrimitiveTopology::TriangleList,
-                strip_index_format: None,
-                front_face: FrontFace::Ccw,
-                cull_mode: Some(Face::Back),
-                unclipped_depth: false,
-                polygon_mode: PolygonMode::Fill,
-                conservative: false,
-            },
-            depth_stencil: None,
-            multisample: MultisampleState {
-                count: config.msaa_samples,
-                mask: !0,
-                alpha_to_coverage_enabled: false,
-            },
-            multiview: None,
-        });
-
-        let text_pipeline = device.create_render_pipeline(&RenderPipelineDescriptor {
-            label: Some("Text Render Pipeline"),
-            layout: Some(&pipeline_layout),
-            vertex: VertexState {
-                module: &text_shader,
-                entry_point: "vs_main",
-                buffers: &[Vertex::desc(), QuadInstance::desc()],
-            },
-            fragment: Some(FragmentState {
-                module: &text_shader,
-                entry_point: "fs_main",
-                targets: &[Some(ColorTargetState {
-                    format: surface_format,
-                    blend: Some(BlendState::ALPHA_BLENDING),
-                    write_mask: ColorWrites::ALL,
-                })],
-            }),
-            primitive: PrimitiveState::default(),
-            depth_stencil: None,
-            multisample: MultisampleState {
-                count: config.msaa_samples,
-                mask: !0,
-                alpha_to_coverage_enabled: false,
-            },
-            multiview: None,
-        });
-
-        let image_pipeline = device.create_render_pipeline(&RenderPipelineDescriptor {
-            label: Some("Image Render Pipeline"),
-            layout: Some(&pipeline_layout),
-            vertex: VertexState {
-                module: &image_shader,
-                entry_point: "vs_main",
-                buffers: &[Vertex::desc(), QuadInstance::desc()],
-            },
-            fragment: Some(FragmentState {
-                module: &image_shader,
-                entry_point: "fs_main",
-                targets: &[Some(ColorTargetState {
-                    format: surface_format,
-                    blend: Some(BlendState::ALPHA_BLENDING),
-                    write_mask: ColorWrites::ALL,
-                })],
-            }),
-            primitive: PrimitiveState::default(),
-            depth_stencil: None,
-            multisample: MultisampleState {
-                count: config.msaa_samples,
-                mask: !0,
-                alpha_to_coverage_enabled: false,
-            },
-            multiview: None,
-        });
-
-        // Create vertex buffer for quad
-        let quad_vertices = [
-            Vertex { position: [0.0, 0.0], tex_coords: [0.0, 1.0], color: [1.0, 1.0, 1.0, 1.0] },
-            Vertex { position: [1.0, 0.0], tex_coords: [1.0, 1.0], color: [1.0, 1.0, 1.0, 1.0] },
-            Vertex { position: [1.0, 1.0], tex_coords: [1.0, 0.0], color: [1.0, 1.0, 1.0, 1.0] },
-            Vertex { position: [0.0, 1.0], tex_coords: [0.0, 0.0], color: [1.0, 1.0, 1.0, 1.0] },
-        ];
-
-        let quad_vertex_buffer = device.create_buffer(&BufferDescriptor {
-            label: Some("Quad Vertex Buffer"),
-            size: (quad_vertices.len() * std::mem::size_of::<Vertex>()) as u64,
-            usage: BufferUsages::VERTEX | BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        });
-
-        // Create index buffer
-        let indices: &[u16] = &[0, 1, 2, 0, 2, 3];
-        let index_buffer = device.create_buffer(&BufferDescriptor {
-            label: Some("Index Buffer"),
-            size: (indices.len() * std::mem::size_of::<u16>()) as u64,
-            usage: BufferUsages::INDEX | BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        });
-
-        // Create uniform buffer
-        let uniform_buffer = device.create_buffer(&BufferDescriptor {
-            label: Some("Uniform Buffer"),
-            size: std::mem::size_of::<RenderUniforms>() as u64,
-            usage: BufferUsages::UNIFORM | BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        });
-
-        // Create instance buffer
-        let max_quads_per_batch = 10000;
-        let quad_instance_buffer = device.create_buffer(&BufferDescriptor {
-            label: Some("Quad Instance Buffer"),
-            size: (std::mem::size_of::<QuadInstance>() * max_quads_per_batch) as u64,
-            usage: BufferUsages::VERTEX | BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        });
-
-        // Create texture array for optimal batching
-        let texture_array = device.create_texture(&TextureDescriptor {
-            label: Some("Texture Array"),
-            size: Extent3d {
-                width: 2048,
-                height: 2048,
-                depth_or_array_layers: 64, // Support for 64 textures in array
-            },
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: TextureDimension::D2,
-            format: TextureFormat::Rgba8UnormSrgb,
-            usage: TextureUsages::TEXTURE_BINDING | TextureUsages::COPY_DST,
-            view_formats: &[],
-        });
-
-        let texture_array_view = texture_array.create_view(&TextureViewDescriptor {
-            dimension: Some(TextureViewDimension::D2Array),
-            ..Default::default()
-        });
-
-        // Create sampler with optimal settings
-        let sampler = device.create_sampler(&SamplerDescriptor {
-            address_mode_u: AddressMode::ClampToEdge,
-            address_mode_v: AddressMode::ClampToEdge,
-            address_mode_w: AddressMode::ClampToEdge,
-            mag_filter: FilterMode::Linear,
-            min_filter: FilterMode::Linear,
-            mipmap_filter: FilterMode::Nearest,
-            ..Default::default()
-        });
-
-        Ok(Self {
-            device,
-            queue,
-            quad_pipeline,
-            text_pipeline,
-            image_pipeline,
-            quad_vertex_buffer,
-            index_buffer,
-            uniform_buffer,
-            uniform_bind_group_layout,
-            texture_bind_group_layout,
-            max_quads_per_batch,
-            quad_instances: Vec::with_capacity(max_quads_per_batch),
-            quad_instance_buffer,
-            texture_array,
-            texture_array_view,
-            sampler,
-        })
-    }
-
-    /// Add a quad to the current batch
-    pub fn add_quad(&mut self, rect: UIRect, color: [f32; 4], texture_index: Option<u32>) {
-        if self.quad_instances.len() >= self.max_quads_per_batch {
-            // Flush current batch
-            self.flush_quad_batch();
-        }
-
-        self.quad_instances.push(QuadInstance {
-            position: [rect.x, rect.y],
-            size: [rect.width, rect.height],
-            color,
-            tex_coords: [0.0, 0.0, 1.0, 1.0], // Full texture by default
-            texture_index: texture_index.unwrap_or(0),
-            flags: 0,
-        });
-    }
-
-    /// Flush the current quad batch to GPU
-    pub fn flush_quad_batch(&mut self) {
-        if self.quad_instances.is_empty() {
-            return;
-        }
-
-        // Upload instance data
-        self.queue.write_buffer(
-            &self.quad_instance_buffer,
-            0,
-            bytemuck::cast_slice(&self.quad_instances),
+        let solid_pipeline = Self::create_render_pipeline(
+            &device.device,
+            &pipeline_layout,
+            &solid_shader,
+            surface_format,
+            "Solid Pipeline",
         );
 
-        self.quad_instances.clear();
-    }
+        let textured_pipeline = Self::create_render_pipeline(
+            &device.device,
+            &pipeline_layout,
+            &textured_shader,
+            surface_format,
+            "Textured Pipeline",
+        );
 
-    /// Record render commands for a UI layer
-    pub fn record_layer(
-        &mut self,
-        encoder: &mut CommandEncoder,
-        layer: &UILayer,
-        target_view: &TextureView,
-    ) {
-        // Create render pass
-        let mut render_pass = encoder.begin_render_pass(&RenderPassDescriptor {
-            label: Some("UI Layer Render Pass"),
-            color_attachments: &[Some(RenderPassColorAttachment {
-                view: target_view,
-                resolve_target: None,
-                ops: Operations {
-                    load: LoadOp::Load,
-                    store: StoreOp::Store,
-                },
-            })],
-            depth_stencil_attachment: None,
-            occlusion_query_set: None,
-            timestamp_writes: None,
-        });
+        let text_pipeline = Self::create_render_pipeline(
+            &device.device,
+            &pipeline_layout,
+            &text_shader,
+            surface_format,
+            "Text Pipeline",
+        );
 
-        // Set pipeline and resources
-        render_pass.set_pipeline(&self.quad_pipeline);
-        render_pass.set_vertex_buffer(0, self.quad_vertex_buffer.slice(..));
-        render_pass.set_vertex_buffer(1, self.quad_instance_buffer.slice(..));
-        render_pass.set_index_buffer(self.index_buffer.slice(..), IndexFormat::Uint16);
+        let rounded_rect_pipeline = Self::create_render_pipeline(
+            &device.device,
+            &pipeline_layout,
+            &rounded_rect_shader,
+            surface_format,
+            "Rounded Rect Pipeline",
+        );
 
-        // Draw instances
-        let instance_count = self.quad_instances.len() as u32;
-        if instance_count > 0 {
-            render_pass.draw_indexed(0..6, 0, 0..instance_count);
-        }
-    }
-}
+        let gradient_pipeline = Self::create_render_pipeline(
+            &device.device,
+            &pipeline_layout,
+            &gradient_shader,
+            surface_format,
+            "Gradient Pipeline",
+        );
 
-/// Main WGPU renderer with advanced multi-threading
-pub struct WgpuRenderer {
-    device: Arc<Device>,
-    queue: Arc<Queue>,
-    surface_config: Arc<RwLock<SurfaceConfiguration>>,
+        // Create dynamic buffers
+        let vertex_buffer = TypedBuffer::new(
+            &device.device,
+            wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+            65536, // Start with space for many vertices
+            Some("Vertex Buffer"),
+        );
 
-    /// Batch renderers for different thread contexts
-    batch_renderers: Arc<Mutex<HashMap<String, BatchRenderer>>>,
-
-    /// Resource pools
-    buffer_pool: Arc<BufferPool>,
-    texture_pool: Arc<TexturePool>,
-}
-
-impl WgpuRenderer {
-    /// Create a new WGPU renderer
-    pub async fn new(
-        device: Arc<Device>,
-        queue: Arc<Queue>,
-        surface_config: Arc<RwLock<SurfaceConfiguration>>,
-        config: &CompositorConfig,
-    ) -> Result<Self, Box<dyn std::error::Error>> {
-        // Create resource pools
-        let memory_pool = Arc::new(crate::memory::MemoryPool::new(
-            Arc::clone(&device),
-            256 * 1024 * 1024, // 256MB
-        ));
-
-        let buffer_pool = Arc::new(BufferPool::new(Arc::clone(&device), memory_pool));
-        let texture_pool = Arc::new(TexturePool::new(Arc::clone(&device), 512 * 1024 * 1024));
+        let index_buffer = TypedBuffer::new(
+            &device.device,
+            wgpu::BufferUsages::INDEX | wgpu::BufferUsages::COPY_DST,
+            98304, // 65536 * 1.5 for typical UI geometry
+            Some("Index Buffer"),
+        );
 
         Ok(Self {
-            device,
-            queue,
-            surface_config,
-            batch_renderers: Arc::new(Mutex::new(HashMap::new())),
-            buffer_pool,
-            texture_pool,
+            solid_pipeline,
+            textured_pipeline,
+            text_pipeline,
+            rounded_rect_pipeline,
+            gradient_pipeline,
+            vertex_buffer,
+            index_buffer,
+            uniform_buffer,
+            uniform_bind_group,
+            texture_bind_group_layout,
+            batches: Vec::new(),
+            current_batch: None,
+            stats: RenderStats::default(),
         })
     }
 
-    /// Get or create a batch renderer for a thread
-    pub fn get_batch_renderer(&self, thread_id: &str) -> Result<BatchRenderer, Box<dyn std::error::Error>> {
-        let mut renderers = self.batch_renderers.lock().unwrap();
+    fn create_render_pipeline(
+        device: &wgpu::Device,
+        layout: &wgpu::PipelineLayout,
+        shader: &wgpu::ShaderModule,
+        format: wgpu::TextureFormat,
+        label: &str,
+    ) -> RenderPipeline {
+        device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some(label),
+            layout: Some(layout),
+            vertex: wgpu::VertexState {
+                module: shader,
+                entry_point: "vs_main",
+                buffers: &[Vertex::desc()],
+            },
+            fragment: Some(wgpu::FragmentState {
+                module: shader,
+                entry_point: "fs_main",
+                targets: &[Some(wgpu::ColorTargetState {
+                    format,
+                    blend: Some(wgpu::BlendState::ALPHA_BLENDING),
+                    write_mask: wgpu::ColorWrites::ALL,
+                })],
+            }),
+            primitive: wgpu::PrimitiveState {
+                topology: wgpu::PrimitiveTopology::TriangleList,
+                strip_index_format: None,
+                front_face: wgpu::FrontFace::Ccw,
+                cull_mode: None, // No culling for UI
+                unclipped_depth: false,
+                polygon_mode: wgpu::PolygonMode::Fill,
+                conservative: false,
+            },
+            depth_stencil: None, // 2D UI doesn't need depth testing
+            multisample: wgpu::MultisampleState {
+                count: 1,
+                mask: !0,
+                alpha_to_coverage_enabled: false,
+            },
+            multiview: None,
+        })
+    }
 
-        if !renderers.contains_key(thread_id) {
-            let surface_config = self.surface_config.read().unwrap();
-            let renderer = pollster::block_on(BatchRenderer::new(
-                Arc::clone(&self.device),
-                Arc::clone(&self.queue),
-                surface_config.format,
-                &CompositorConfig::default(),
-            ))?;
+    /// Begin frame - reset stats and batches
+    pub fn begin_frame(&mut self, context: &Context, time: f32) {
+        // Reset stats
+        self.stats = RenderStats::default();
 
-            renderers.insert(thread_id.to_string(), renderer);
+        // Clear batches
+        self.batches.clear();
+        self.current_batch = None;
+
+        // Update uniforms
+        let uniforms = Uniforms {
+            projection: context.orthographic_projection(),
+            time,
+            _padding: [0.0; 3],
+        };
+        self.uniform_buffer.write(&context.device.queue, &[uniforms]);
+    }
+
+    /// Add render layers (automatically sorts by z-index)
+    pub fn add_layers(&mut self, mut layers: Vec<RenderLayer>) {
+        // Sort layers by z-index
+        layers.sort_by(|a, b| a.z_index.partial_cmp(&b.z_index).unwrap());
+
+        // Process each layer
+        for mut layer in layers {
+            layer.sort_commands_by_z();
+
+            for command in layer.commands {
+                self.add_command(command);
+            }
+        }
+    }
+
+    /// Add a single render command (batches automatically)
+    fn add_command(&mut self, command: RenderCommand) {
+        match command {
+            RenderCommand::Rectangle { rect, color, transform, .. } => {
+                self.add_rectangle(rect, color, transform);
+            }
+            RenderCommand::TexturedRectangle { rect, texture_id, uv_rect, color, transform, .. } => {
+                self.add_textured_rectangle(rect, texture_id, uv_rect, color, transform);
+            }
+            RenderCommand::Text { rect, glyph_atlas_region, color, transform, .. } => {
+                self.add_text_quad(rect, glyph_atlas_region, color, transform);
+            }
+            RenderCommand::RoundedRectangle { rect, corner_radius, color, transform, .. } => {
+                self.add_rounded_rectangle(rect, corner_radius, color, transform);
+            }
+            RenderCommand::GradientRectangle { rect, start_color, end_color, direction, transform, .. } => {
+                self.add_gradient_rectangle(rect, start_color, end_color, direction, transform);
+            }
+        }
+    }
+
+    /// Ensure we have a batch for the given shader type
+    fn ensure_batch(&mut self, shader_type: ShaderType, texture_id: Option<u32>) {
+        let needs_new_batch = match &self.current_batch {
+            None => true,
+            Some(batch) => batch.shader_type != shader_type || batch.texture_id != texture_id,
+        };
+
+        if needs_new_batch {
+            // Finish current batch
+            if let Some(batch) = self.current_batch.take() {
+                if !batch.is_empty() {
+                    self.batches.push(batch);
+                    self.stats.batches_created += 1;
+                }
+            }
+
+            // Start new batch
+            let mut new_batch = RenderBatch::new(shader_type);
+            new_batch.texture_id = texture_id;
+            self.current_batch = Some(new_batch);
+        }
+    }
+
+    fn add_rectangle(&mut self, rect: Rect, color: Color, transform: Transform) {
+        self.ensure_batch(ShaderType::Solid, None);
+
+        if let Some(batch) = &mut self.current_batch {
+            let vertices = Self::create_quad_vertices(rect, color, transform);
+            batch.add_quad(vertices);
+        }
+    }
+
+    fn add_textured_rectangle(&mut self, rect: Rect, texture_id: u32, uv_rect: Rect, color: Color, transform: Transform) {
+        self.ensure_batch(ShaderType::Textured, Some(texture_id));
+
+        if let Some(batch) = &mut self.current_batch {
+            let vertices = Self::create_textured_quad_vertices(rect, uv_rect, color, transform);
+            batch.add_quad(vertices);
+        }
+    }
+
+    fn add_text_quad(&mut self, rect: Rect, uv_rect: Rect, color: Color, transform: Transform) {
+        // Text uses the atlas texture (ID 0 by convention)
+        self.ensure_batch(ShaderType::Text, Some(0));
+
+        if let Some(batch) = &mut self.current_batch {
+            let vertices = Self::create_textured_quad_vertices(rect, uv_rect, color, transform);
+            batch.add_quad(vertices);
+        }
+    }
+
+    fn add_rounded_rectangle(&mut self, rect: Rect, _corner_radius: f32, color: Color, transform: Transform) {
+        self.ensure_batch(ShaderType::RoundedRect, None);
+
+        if let Some(batch) = &mut self.current_batch {
+            let vertices = Self::create_quad_vertices(rect, color, transform);
+            batch.add_quad(vertices);
+        }
+    }
+
+    fn add_gradient_rectangle(&mut self, rect: Rect, start_color: Color, end_color: Color, _direction: f32, transform: Transform) {
+        self.ensure_batch(ShaderType::Gradient, None);
+
+        if let Some(batch) = &mut self.current_batch {
+            // For gradient, we use vertex colors to interpolate
+            let vertices = Self::create_gradient_quad_vertices(rect, start_color, end_color, transform);
+            batch.add_quad(vertices);
+        }
+    }
+
+    fn create_quad_vertices(rect: Rect, color: Color, transform: Transform) -> [Vertex; 4] {
+        use crate::geometry::Point;
+
+        let tl = transform.transform_point(rect.origin);
+        let tr = transform.transform_point(Point::new(rect.origin.x + rect.size.width, rect.origin.y));
+        let bl = transform.transform_point(Point::new(rect.origin.x, rect.origin.y + rect.size.height));
+        let br = transform.transform_point(Point::new(rect.origin.x + rect.size.width, rect.origin.y + rect.size.height));
+
+        [
+            Vertex::new(tl, Point::new(0.0, 0.0), color),
+            Vertex::new(tr, Point::new(1.0, 0.0), color),
+            Vertex::new(br, Point::new(1.0, 1.0), color),
+            Vertex::new(bl, Point::new(0.0, 1.0), color),
+        ]
+    }
+
+    fn create_textured_quad_vertices(rect: Rect, uv_rect: Rect, color: Color, transform: Transform) -> [Vertex; 4] {
+        use crate::geometry::Point;
+
+        let tl = transform.transform_point(rect.origin);
+        let tr = transform.transform_point(Point::new(rect.origin.x + rect.size.width, rect.origin.y));
+        let bl = transform.transform_point(Point::new(rect.origin.x, rect.origin.y + rect.size.height));
+        let br = transform.transform_point(Point::new(rect.origin.x + rect.size.width, rect.origin.y + rect.size.height));
+
+        let uv_tl = uv_rect.origin;
+        let uv_tr = Point::new(uv_rect.origin.x + uv_rect.size.width, uv_rect.origin.y);
+        let uv_bl = Point::new(uv_rect.origin.x, uv_rect.origin.y + uv_rect.size.height);
+        let uv_br = Point::new(uv_rect.origin.x + uv_rect.size.width, uv_rect.origin.y + uv_rect.size.height);
+
+        [
+            Vertex::new(tl, uv_tl, color),
+            Vertex::new(tr, uv_tr, color),
+            Vertex::new(br, uv_br, color),
+            Vertex::new(bl, uv_bl, color),
+        ]
+    }
+
+    fn create_gradient_quad_vertices(rect: Rect, start_color: Color, end_color: Color, transform: Transform) -> [Vertex; 4] {
+        use crate::geometry::Point;
+
+        let tl = transform.transform_point(rect.origin);
+        let tr = transform.transform_point(Point::new(rect.origin.x + rect.size.width, rect.origin.y));
+        let bl = transform.transform_point(Point::new(rect.origin.x, rect.origin.y + rect.size.height));
+        let br = transform.transform_point(Point::new(rect.origin.x + rect.size.width, rect.origin.y + rect.size.height));
+
+        // Simple top-to-bottom gradient
+        [
+            Vertex::new(tl, Point::new(0.0, 0.0), start_color),
+            Vertex::new(tr, Point::new(1.0, 0.0), start_color),
+            Vertex::new(br, Point::new(1.0, 1.0), end_color),
+            Vertex::new(bl, Point::new(0.0, 1.0), end_color),
+        ]
+    }
+
+    /// Finish frame and render all batches
+    pub fn end_frame(&mut self, _render_pass: &mut RenderPass<'_>, _device: &Device) -> anyhow::Result<()> {
+        // Finalize current batch
+        if let Some(batch) = self.current_batch.take() {
+            if !batch.is_empty() {
+                self.batches.push(batch);
+                self.stats.batches_created += 1;
+            }
         }
 
-        // Note: In a real implementation, you'd handle this borrow more carefully
-        let renderer = renderers.get(thread_id).unwrap();
+        // Collect all vertices and indices
+        let mut all_vertices = Vec::new();
+        let mut all_indices = Vec::new();
+        let mut index_offset = 0u32;
 
-        // For this example, we'll create a new renderer
-        // In production code, you'd want to manage this more efficiently
-        let surface_config = self.surface_config.read().unwrap();
-        Ok(pollster::block_on(BatchRenderer::new(
-            Arc::clone(&self.device),
-            Arc::clone(&self.queue),
-            surface_config.format,
-            &CompositorConfig::default(),
-        ))?)
+        for batch in &self.batches {
+            all_vertices.extend_from_slice(&batch.vertices);
+
+            // Adjust indices for concatenated buffer
+            for &index in &batch.indices {
+                all_indices.push(index + index_offset);
+            }
+            index_offset += batch.vertices.len() as u32;
+        }
+
+        if all_vertices.is_empty() {
+            return Ok(());
+        }
+
+        // TODO: Actual GPU rendering implementation
+        // For now, just update stats
+        self.stats.draw_calls = self.batches.len() as u32;
+        self.stats.vertices_rendered = all_vertices.len() as u32;
+        self.stats.triangles_rendered = all_indices.len() as u32 / 3;
+
+        Ok(())
     }
 }

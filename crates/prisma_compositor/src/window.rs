@@ -1,678 +1,705 @@
-/// High-performance window management with GPU acceleration
-use std::sync::{Arc, RwLock, Mutex, atomic::{AtomicU64, Ordering}};
+/// Window management system for the GPU-accelerated compositor
 use std::collections::HashMap;
-use winit::event::{MouseButton, ElementState};
+use crate::{
+    geometry::{Rect, Point, Size, Color},
+    renderer::{RenderCommand, RenderLayer},
+    ui::{UITree, UIElement},
+    events::Event,
+};
 
-use crate::ui::{UISystem, UILayer, UIElement, UIElementType, UIRect};
+/// Unique identifier for windows
+pub type WindowId = u32;
 
-/// Unique window identifier
-pub type WindowId = u64;
-
-/// Window events for the compositor
-#[derive(Debug, Clone)]
-pub enum WindowEvent {
-    /// Window was created
-    Created(WindowId),
-    /// Window was destroyed
-    Destroyed(WindowId),
-    /// Window was moved
-    Moved { id: WindowId, x: f32, y: f32 },
-    /// Window was resized
-    Resized { id: WindowId, width: f32, height: f32 },
-    /// Window gained focus
-    Focused(WindowId),
-    /// Window lost focus
-    Unfocused(WindowId),
-    /// Window was minimized
-    Minimized(WindowId),
-    /// Window was maximized
-    Maximized(WindowId),
-    /// Window was restored
-    Restored(WindowId),
-    /// Window close requested
-    CloseRequested(WindowId),
-}
-
-/// Window state for persistence and management
+/// Window state and properties
 #[derive(Debug, Clone)]
 pub struct WindowState {
     pub id: WindowId,
     pub title: String,
-    pub x: f32,
-    pub y: f32,
-    pub width: f32,
-    pub height: f32,
+    pub bounds: Rect,
+    pub min_size: Size,
+    pub max_size: Size,
+    pub resizable: bool,
     pub minimized: bool,
     pub maximized: bool,
     pub focused: bool,
-    pub resizable: bool,
-    pub decorations: bool,
+    pub visible: bool,
     pub always_on_top: bool,
-    pub transparent: bool,
+    pub decorations: bool,
 }
 
-/// Window decoration style
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum WindowDecorations {
-    None,
-    Minimal,      // Only title bar
-    Standard,     // Title bar with min/max/close
-    System,       // Use system decorations
+impl Default for WindowState {
+    fn default() -> Self {
+        Self {
+            id: 0,
+            title: "Untitled".to_string(),
+            bounds: Rect::new(100.0, 100.0, 800.0, 600.0),
+            min_size: Size::new(200.0, 150.0),
+            max_size: Size::new(f32::INFINITY, f32::INFINITY),
+            resizable: true,
+            minimized: false,
+            maximized: false,
+            focused: false,
+            visible: true,
+            always_on_top: false,
+            decorations: true,
+        }
+    }
 }
 
-/// Window compositor window
-pub struct Window {
-    pub id: WindowId,
-    pub state: WindowState,
-    pub ui_layer: u64, // UI layer ID for this window
-    pub content_area: UIRect,
-    pub decoration_elements: Vec<u64>, // UI element IDs for decorations
-
-    /// Window behavior
-    pub draggable: bool,
-    pub resizable: bool,
-    pub snap_enabled: bool,
-
-    /// Performance optimization
-    pub needs_redraw: bool,
-    pub last_draw_time: std::time::Instant,
-    pub draw_count: u64,
-
-    /// Window decorations
-    decorations: WindowDecorations,
+/// Window decoration rendering (title bar, borders, etc.)
+pub struct WindowDecorations {
     title_bar_height: f32,
     border_width: f32,
+    corner_radius: f32,
+    title_bar_color: Color,
+    border_color: Color,
+    focused_color: Color,
+    unfocused_color: Color,
+}
+
+impl Default for WindowDecorations {
+    fn default() -> Self {
+        Self {
+            title_bar_height: 30.0,
+            border_width: 1.0,
+            corner_radius: 8.0,
+            title_bar_color: Color::from_hex("#2d2d2d").unwrap_or(Color::new(0.2, 0.2, 0.2, 1.0)),
+            border_color: Color::from_hex("#404040").unwrap_or(Color::new(0.25, 0.25, 0.25, 1.0)),
+            focused_color: Color::from_hex("#0078d4").unwrap_or(Color::BLUE),
+            unfocused_color: Color::from_hex("#606060").unwrap_or(Color::new(0.4, 0.4, 0.4, 1.0)),
+        }
+    }
+}
+
+impl WindowDecorations {
+    /// Generate render commands for window decorations
+    pub fn render(&self, state: &WindowState, z_index: f32) -> Vec<RenderCommand> {
+        if !state.decorations || state.maximized {
+            return Vec::new();
+        }
+
+        let mut commands = Vec::new();
+
+        // Window border
+        let border_color = if state.focused {
+            self.focused_color
+        } else {
+            self.unfocused_color
+        };
+
+        commands.push(RenderCommand::RoundedRectangle {
+            rect: state.bounds,
+            corner_radius: self.corner_radius,
+            color: border_color,
+            transform: crate::geometry::Transform::identity(),
+            z_index,
+        });
+
+        // Title bar background
+        let title_bar_rect = Rect::new(
+            state.bounds.origin.x + self.border_width,
+            state.bounds.origin.y + self.border_width,
+            state.bounds.size.width - 2.0 * self.border_width,
+            self.title_bar_height,
+        );
+
+        commands.push(RenderCommand::Rectangle {
+            rect: title_bar_rect,
+            color: self.title_bar_color,
+            transform: crate::geometry::Transform::identity(),
+            z_index: z_index + 0.1,
+        });
+
+        // Window content background
+        let content_rect = Rect::new(
+            state.bounds.origin.x + self.border_width,
+            state.bounds.origin.y + self.border_width + self.title_bar_height,
+            state.bounds.size.width - 2.0 * self.border_width,
+            state.bounds.size.height - 2.0 * self.border_width - self.title_bar_height,
+        );
+
+        commands.push(RenderCommand::Rectangle {
+            rect: content_rect,
+            color: Color::from_hex("#1e1e1e").unwrap_or(Color::new(0.12, 0.12, 0.12, 1.0)),
+            transform: crate::geometry::Transform::identity(),
+            z_index: z_index + 0.05,
+        });
+
+        commands
+    }
+
+    /// Get content area (excluding decorations)
+    pub fn content_area(&self, state: &WindowState) -> Rect {
+        if !state.decorations || state.maximized {
+            return state.bounds;
+        }
+
+        Rect::new(
+            state.bounds.origin.x + self.border_width,
+            state.bounds.origin.y + self.border_width + self.title_bar_height,
+            state.bounds.size.width - 2.0 * self.border_width,
+            state.bounds.size.height - 2.0 * self.border_width - self.title_bar_height,
+        )
+    }
+
+    /// Check if point is in title bar (for dragging)
+    pub fn hit_test_title_bar(&self, state: &WindowState, point: Point) -> bool {
+        if !state.decorations || state.maximized {
+            return false;
+        }
+
+        let title_bar_rect = Rect::new(
+            state.bounds.origin.x + self.border_width,
+            state.bounds.origin.y + self.border_width,
+            state.bounds.size.width - 2.0 * self.border_width,
+            self.title_bar_height,
+        );
+
+        title_bar_rect.contains_point(point)
+    }
+
+    /// Check if point is on resize border
+    pub fn hit_test_resize_border(&self, state: &WindowState, point: Point) -> Option<ResizeDirection> {
+        if !state.decorations || !state.resizable || state.maximized {
+            return None;
+        }
+
+        let border = self.border_width * 2.0; // Expand hit area
+        let bounds = state.bounds;
+
+        // Check corners first (higher priority)
+        if point.x <= bounds.origin.x + border && point.y <= bounds.origin.y + border {
+            return Some(ResizeDirection::TopLeft);
+        }
+        if point.x >= bounds.origin.x + bounds.size.width - border && point.y <= bounds.origin.y + border {
+            return Some(ResizeDirection::TopRight);
+        }
+        if point.x <= bounds.origin.x + border && point.y >= bounds.origin.y + bounds.size.height - border {
+            return Some(ResizeDirection::BottomLeft);
+        }
+        if point.x >= bounds.origin.x + bounds.size.width - border && point.y >= bounds.origin.y + bounds.size.height - border {
+            return Some(ResizeDirection::BottomRight);
+        }
+
+        // Check edges
+        if point.x <= bounds.origin.x + border {
+            return Some(ResizeDirection::Left);
+        }
+        if point.x >= bounds.origin.x + bounds.size.width - border {
+            return Some(ResizeDirection::Right);
+        }
+        if point.y <= bounds.origin.y + border {
+            return Some(ResizeDirection::Top);
+        }
+        if point.y >= bounds.origin.y + bounds.size.height - border {
+            return Some(ResizeDirection::Bottom);
+        }
+
+        None
+    }
+}
+
+/// Window resize directions
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum ResizeDirection {
+    Top,
+    Bottom,
+    Left,
+    Right,
+    TopLeft,
+    TopRight,
+    BottomLeft,
+    BottomRight,
+}
+
+/// Individual window with content and state
+pub struct Window {
+    state: WindowState,
+    content: UITree,
+    decorations: WindowDecorations,
+    drag_state: Option<DragState>,
+    resize_state: Option<ResizeState>,
+    needs_layout: bool,
+    needs_render: bool,
+}
+
+#[derive(Debug, Clone)]
+struct DragState {
+    start_position: Point,
+    start_window_position: Point,
+}
+
+#[derive(Debug, Clone)]
+struct ResizeState {
+    direction: ResizeDirection,
+    start_position: Point,
+    start_bounds: Rect,
 }
 
 impl Window {
     /// Create a new window
-    pub fn new(
-        id: WindowId,
-        title: String,
-        x: f32,
-        y: f32,
-        width: f32,
-        height: f32,
-        ui_system: &UISystem,
-    ) -> Self {
-        let state = WindowState {
-            id,
-            title: title.clone(),
-            x,
-            y,
-            width,
-            height,
-            minimized: false,
-            maximized: false,
-            focused: false,
-            resizable: true,
-            decorations: true,
-            always_on_top: false,
-            transparent: false,
-        };
+    pub fn new(id: WindowId, title: String) -> Self {
+        let mut state = WindowState::default();
+        state.id = id;
+        state.title = title;
 
-        // Create UI layer for this window
-        let ui_layer = ui_system.create_layer(format!("Window-{}", id));
-
-        let title_bar_height = 32.0;
-        let border_width = 2.0;
-
-        let content_area = UIRect::new(
-            x + border_width,
-            y + title_bar_height,
-            width - 2.0 * border_width,
-            height - title_bar_height - border_width,
-        );
-
-        let mut window = Self {
-            id,
+        Self {
             state,
-            ui_layer,
-            content_area,
-            decoration_elements: Vec::new(),
-            draggable: true,
-            resizable: true,
-            snap_enabled: true,
-            needs_redraw: true,
-            last_draw_time: std::time::Instant::now(),
-            draw_count: 0,
-            decorations: WindowDecorations::Standard,
-            title_bar_height,
-            border_width,
-        };
-
-        // Create window decorations
-        window.create_decorations(ui_system);
-
-        window
-    }
-
-    /// Create window decoration elements
-    fn create_decorations(&mut self, ui_system: &UISystem) {
-        if self.decorations == WindowDecorations::None {
-            return;
-        }
-
-        // Window border
-        let _border_color = if self.state.focused {
-            [0.4, 0.6, 1.0, 1.0] // Blue when focused
-        } else {
-            [0.5, 0.5, 0.5, 1.0] // Gray when unfocused
-        };
-
-        // Top border (title bar background)
-        let title_bar_id = self.generate_decoration_id();
-        let title_bar = UIElement::rect(
-            title_bar_id,
-            UIRect::new(self.state.x, self.state.y, self.state.width, self.title_bar_height),
-            [0.2, 0.2, 0.2, 1.0],
-        );
-        ui_system.add_element_to_layer(self.ui_layer, title_bar);
-        self.decoration_elements.push(title_bar_id);
-
-        // Title text
-        let title_text_id = self.generate_decoration_id();
-        let title_text = UIElement::text(
-            title_text_id,
-            UIRect::new(
-                self.state.x + 10.0,
-                self.state.y + 6.0,
-                self.state.width - 120.0, // Leave space for buttons
-                20.0,
-            ),
-            self.state.title.clone(),
-            0, // Default font
-            [1.0, 1.0, 1.0, 1.0],
-        );
-        ui_system.add_element_to_layer(self.ui_layer, title_text);
-        self.decoration_elements.push(title_text_id);
-
-        // Window control buttons
-        let button_size = 24.0;
-        let button_y = self.state.y + 4.0;
-
-        // Close button
-        let close_button_id = self.generate_decoration_id();
-        let close_button = UIElement::button(
-            close_button_id,
-            UIRect::new(
-                self.state.x + self.state.width - button_size - 8.0,
-                button_y,
-                button_size,
-                button_size,
-            ),
-            "✕".to_string(),
-            0,
-        );
-        ui_system.add_element_to_layer(self.ui_layer, close_button);
-        self.decoration_elements.push(close_button_id);
-
-        // Maximize button
-        let maximize_button_id = self.generate_decoration_id();
-        let maximize_button = UIElement::button(
-            maximize_button_id,
-            UIRect::new(
-                self.state.x + self.state.width - 2.0 * button_size - 12.0,
-                button_y,
-                button_size,
-                button_size,
-            ),
-            if self.state.maximized { "⧉" } else { "□" }.to_string(),
-            0,
-        );
-        ui_system.add_element_to_layer(self.ui_layer, maximize_button);
-        self.decoration_elements.push(maximize_button_id);
-
-        // Minimize button
-        let minimize_button_id = self.generate_decoration_id();
-        let minimize_button = UIElement::button(
-            minimize_button_id,
-            UIRect::new(
-                self.state.x + self.state.width - 3.0 * button_size - 16.0,
-                button_y,
-                button_size,
-                button_size,
-            ),
-            "−".to_string(),
-            0,
-        );
-        ui_system.add_element_to_layer(self.ui_layer, minimize_button);
-        self.decoration_elements.push(minimize_button_id);
-
-        // Left border
-        let left_border_id = self.generate_decoration_id();
-        let left_border = UIElement::rect(
-            left_border_id,
-            UIRect::new(
-                self.state.x,
-                self.state.y + self.title_bar_height,
-                self.border_width,
-                self.state.height - self.title_bar_height,
-            ),
-            [0.5, 0.5, 0.5, 1.0],
-        );
-        ui_system.add_element_to_layer(self.ui_layer, left_border);
-        self.decoration_elements.push(left_border_id);
-
-        // Right border
-        let right_border_id = self.generate_decoration_id();
-        let right_border = UIElement::rect(
-            right_border_id,
-            UIRect::new(
-                self.state.x + self.state.width - self.border_width,
-                self.state.y + self.title_bar_height,
-                self.border_width,
-                self.state.height - self.title_bar_height,
-            ),
-            [0.5, 0.5, 0.5, 1.0],
-        );
-        ui_system.add_element_to_layer(self.ui_layer, right_border);
-        self.decoration_elements.push(right_border_id);
-
-        // Bottom border
-        let bottom_border_id = self.generate_decoration_id();
-        let bottom_border = UIElement::rect(
-            bottom_border_id,
-            UIRect::new(
-                self.state.x,
-                self.state.y + self.state.height - self.border_width,
-                self.state.width,
-                self.border_width,
-            ),
-            [0.5, 0.5, 0.5, 1.0],
-        );
-        ui_system.add_element_to_layer(self.ui_layer, bottom_border);
-        self.decoration_elements.push(bottom_border_id);
-    }
-
-    /// Update window position
-    pub fn set_position(&mut self, x: f32, y: f32, ui_system: &UISystem) {
-        self.state.x = x;
-        self.state.y = y;
-        self.update_content_area();
-        self.update_decorations(ui_system);
-        self.needs_redraw = true;
-    }
-
-    /// Update window size
-    pub fn set_size(&mut self, width: f32, height: f32, ui_system: &UISystem) {
-        self.state.width = width.max(200.0); // Minimum width
-        self.state.height = height.max(150.0); // Minimum height
-        self.update_content_area();
-        self.update_decorations(ui_system);
-        self.needs_redraw = true;
-    }
-
-    /// Update window bounds (position and size)
-    pub fn set_bounds(&mut self, x: f32, y: f32, width: f32, height: f32, ui_system: &UISystem) {
-        self.state.x = x;
-        self.state.y = y;
-        self.state.width = width.max(200.0);
-        self.state.height = height.max(150.0);
-        self.update_content_area();
-        self.update_decorations(ui_system);
-        self.needs_redraw = true;
-    }
-
-    /// Set window focus state
-    pub fn set_focused(&mut self, focused: bool, ui_system: &UISystem) {
-        if self.state.focused != focused {
-            self.state.focused = focused;
-            self.update_decorations(ui_system);
-            self.needs_redraw = true;
+            content: UITree::new(),
+            decorations: WindowDecorations::default(),
+            drag_state: None,
+            resize_state: None,
+            needs_layout: true,
+            needs_render: true,
         }
     }
 
-    /// Minimize window
-    pub fn minimize(&mut self, ui_system: &UISystem) {
-        if !self.state.minimized {
-            self.state.minimized = true;
-            self.hide_decorations(ui_system);
+    /// Set window content
+    pub fn set_content(&mut self, content: Box<dyn UIElement>) {
+        self.content.set_root(content);
+        self.needs_layout = true;
+        self.needs_render = true;
+    }
+
+    /// Get window state
+    pub fn state(&self) -> &WindowState {
+        &self.state
+    }
+
+    /// Get mutable window state
+    pub fn state_mut(&mut self) -> &mut WindowState {
+        &mut self.state
+    }
+
+    /// Set window bounds
+    pub fn set_bounds(&mut self, bounds: Rect) {
+        self.state.bounds = bounds;
+        self.needs_layout = true;
+        self.needs_render = true;
+    }
+
+    /// Set window title
+    pub fn set_title(&mut self, title: String) {
+        self.state.title = title;
+        self.needs_render = true;
+    }
+
+    /// Focus the window
+    pub fn focus(&mut self) {
+        self.state.focused = true;
+        self.needs_render = true;
+    }
+
+    /// Unfocus the window
+    pub fn unfocus(&mut self) {
+        self.state.focused = false;
+        self.needs_render = true;
+    }
+
+    /// Minimize the window
+    pub fn minimize(&mut self) {
+        self.state.minimized = true;
+        self.state.visible = false;
+        self.needs_render = true;
+    }
+
+    /// Restore the window from minimized state
+    pub fn restore(&mut self) {
+        self.state.minimized = false;
+        self.state.maximized = false;
+        self.state.visible = true;
+        self.needs_layout = true;
+        self.needs_render = true;
+    }
+
+    /// Maximize the window
+    pub fn maximize(&mut self, desktop_bounds: Rect) {
+        if !self.state.maximized {
+            self.state.maximized = true;
+            self.state.bounds = desktop_bounds;
+            self.needs_layout = true;
+            self.needs_render = true;
         }
     }
 
-    /// Maximize window
-    pub fn maximize(&mut self, ui_system: &UISystem) {
-        self.state.maximized = !self.state.maximized;
-        self.update_decorations(ui_system);
-        self.needs_redraw = true;
-    }
-
-    /// Restore window from minimized/maximized state
-    pub fn restore(&mut self, ui_system: &UISystem) {
-        if self.state.minimized {
-            self.state.minimized = false;
-            self.show_decorations(ui_system);
-        }
+    /// Toggle maximize state
+    pub fn toggle_maximize(&mut self, desktop_bounds: Rect) {
         if self.state.maximized {
-            self.state.maximized = false;
-            self.update_decorations(ui_system);
-        }
-        self.needs_redraw = true;
-    }
-
-    /// Check if point is in title bar (for dragging)
-    pub fn is_point_in_title_bar(&self, x: f32, y: f32) -> bool {
-        x >= self.state.x
-            && x <= self.state.x + self.state.width
-            && y >= self.state.y
-            && y <= self.state.y + self.title_bar_height
-    }
-
-    /// Check if point is in resize area
-    pub fn get_resize_cursor(&self, x: f32, y: f32) -> Option<ResizeCursor> {
-        let resize_area = 8.0;
-
-        let left_edge = (x - self.state.x).abs() < resize_area;
-        let right_edge = (x - (self.state.x + self.state.width)).abs() < resize_area;
-        let top_edge = (y - self.state.y).abs() < resize_area;
-        let bottom_edge = (y - (self.state.y + self.state.height)).abs() < resize_area;
-
-        match (left_edge, right_edge, top_edge, bottom_edge) {
-            (true, false, true, false) => Some(ResizeCursor::NorthWest),
-            (false, true, true, false) => Some(ResizeCursor::NorthEast),
-            (true, false, false, true) => Some(ResizeCursor::SouthWest),
-            (false, true, false, true) => Some(ResizeCursor::SouthEast),
-            (true, false, false, false) => Some(ResizeCursor::West),
-            (false, true, false, false) => Some(ResizeCursor::East),
-            (false, false, true, false) => Some(ResizeCursor::North),
-            (false, false, false, true) => Some(ResizeCursor::South),
-            _ => None,
+            self.restore();
+        } else {
+            self.maximize(desktop_bounds);
         }
     }
 
-    /// Update content area based on window bounds
-    fn update_content_area(&mut self) {
-        self.content_area = UIRect::new(
-            self.state.x + self.border_width,
-            self.state.y + self.title_bar_height,
-            self.state.width - 2.0 * self.border_width,
-            self.state.height - self.title_bar_height - self.border_width,
-        );
-    }
-
-    /// Update decoration positions
-    fn update_decorations(&mut self, ui_system: &UISystem) {
-        // Remove old decorations
-        for &element_id in &self.decoration_elements {
-            ui_system.remove_element(self.ui_layer, element_id);
-        }
-        self.decoration_elements.clear();
-
-        // Create new decorations
-        self.create_decorations(ui_system);
-    }
-
-    /// Hide decorations (for minimized windows)
-    fn hide_decorations(&self, ui_system: &UISystem) {
-        for &element_id in &self.decoration_elements {
-            ui_system.remove_element(self.ui_layer, element_id);
+    /// Update layout if needed
+    pub fn update_layout(&mut self) {
+        if self.needs_layout {
+            let content_area = self.decorations.content_area(&self.state);
+            self.content.layout(content_area.size);
+            self.needs_layout = false;
         }
     }
 
-    /// Show decorations (when restoring)
-    fn show_decorations(&mut self, ui_system: &UISystem) {
-        self.create_decorations(ui_system);
+    /// Generate render commands
+    pub fn render(&self, z_index: f32) -> Vec<RenderCommand> {
+        if !self.state.visible {
+            return Vec::new();
+        }
+
+        let mut commands = Vec::new();
+
+        // Render decorations
+        commands.extend(self.decorations.render(&self.state, z_index));
+
+        // Render content
+        let content_layers = self.content.render();
+        for layer in content_layers {
+            for command in layer.commands {
+                // Offset content commands to content area
+                let _content_area = self.decorations.content_area(&self.state);
+                let adjusted_command = command;
+
+                // TODO: Apply content area offset to render commands
+                // This would require modifying the RenderCommand enum to support offset transforms
+
+                commands.push(adjusted_command);
+            }
+        }
+
+        commands
     }
 
-    /// Generate unique decoration element ID
-    fn generate_decoration_id(&self) -> u64 {
-        static COUNTER: AtomicU64 = AtomicU64::new(1000);
-        COUNTER.fetch_add(1, Ordering::Relaxed)
+    /// Handle window events
+    pub fn handle_event(&mut self, event: &Event) -> bool {
+        use crate::events::{InputEvent, ButtonState, MouseButton};
+
+        match event {
+            Event::Input(InputEvent::MouseButton { button: MouseButton::Left, state: ButtonState::Pressed, position, .. }) => {
+                // Check for title bar drag
+                if self.decorations.hit_test_title_bar(&self.state, *position) {
+                    self.drag_state = Some(DragState {
+                        start_position: *position,
+                        start_window_position: self.state.bounds.origin,
+                    });
+                    return true;
+                }
+
+                // Check for resize border
+                if let Some(direction) = self.decorations.hit_test_resize_border(&self.state, *position) {
+                    self.resize_state = Some(ResizeState {
+                        direction,
+                        start_position: *position,
+                        start_bounds: self.state.bounds,
+                    });
+                    return true;
+                }
+
+                // Forward to content if in content area
+                let content_area = self.decorations.content_area(&self.state);
+                if content_area.contains_point(*position) {
+                    return self.content.handle_event(event);
+                }
+            }
+
+            Event::Input(InputEvent::MouseMove { position, .. }) => {
+                // Handle window dragging
+                if let Some(drag) = &self.drag_state {
+                    let delta = *position - drag.start_position;
+                    self.state.bounds.origin = drag.start_window_position + delta;
+                    self.needs_render = true;
+                    return true;
+                }
+
+                // Handle window resizing
+                if let Some(resize) = &self.resize_state {
+                    let delta = *position - resize.start_position;
+                    self.apply_resize(resize.direction, delta, resize.start_bounds);
+                    self.needs_layout = true;
+                    self.needs_render = true;
+                    return true;
+                }
+
+                // Forward to content
+                return self.content.handle_event(event);
+            }
+
+            Event::Input(InputEvent::MouseButton { button: MouseButton::Left, state: ButtonState::Released, .. }) => {
+                // End dragging/resizing
+                self.drag_state = None;
+                self.resize_state = None;
+
+                // Forward to content
+                return self.content.handle_event(event);
+            }
+
+            _ => {
+                // Forward other events to content
+                return self.content.handle_event(event);
+            }
+        }
+
+        false
+    }
+
+    fn apply_resize(&mut self, direction: ResizeDirection, delta: Point, start_bounds: Rect) {
+        let mut new_bounds = start_bounds;
+
+        match direction {
+            ResizeDirection::Left => {
+                let new_width = (start_bounds.size.width - delta.x).max(self.state.min_size.width);
+                let width_change = start_bounds.size.width - new_width;
+                new_bounds.origin.x = start_bounds.origin.x + width_change;
+                new_bounds.size.width = new_width;
+            }
+            ResizeDirection::Right => {
+                new_bounds.size.width = (start_bounds.size.width + delta.x).max(self.state.min_size.width);
+            }
+            ResizeDirection::Top => {
+                let new_height = (start_bounds.size.height - delta.y).max(self.state.min_size.height);
+                let height_change = start_bounds.size.height - new_height;
+                new_bounds.origin.y = start_bounds.origin.y + height_change;
+                new_bounds.size.height = new_height;
+            }
+            ResizeDirection::Bottom => {
+                new_bounds.size.height = (start_bounds.size.height + delta.y).max(self.state.min_size.height);
+            }
+            ResizeDirection::TopLeft => {
+                self.apply_resize(ResizeDirection::Top, delta, start_bounds);
+                self.apply_resize(ResizeDirection::Left, delta, self.state.bounds);
+                return;
+            }
+            ResizeDirection::TopRight => {
+                self.apply_resize(ResizeDirection::Top, delta, start_bounds);
+                self.apply_resize(ResizeDirection::Right, delta, self.state.bounds);
+                return;
+            }
+            ResizeDirection::BottomLeft => {
+                self.apply_resize(ResizeDirection::Bottom, delta, start_bounds);
+                self.apply_resize(ResizeDirection::Left, delta, self.state.bounds);
+                return;
+            }
+            ResizeDirection::BottomRight => {
+                self.apply_resize(ResizeDirection::Bottom, delta, start_bounds);
+                self.apply_resize(ResizeDirection::Right, delta, self.state.bounds);
+                return;
+            }
+        }
+
+        // Apply size constraints
+        new_bounds.size.width = new_bounds.size.width
+            .max(self.state.min_size.width)
+            .min(self.state.max_size.width);
+        new_bounds.size.height = new_bounds.size.height
+            .max(self.state.min_size.height)
+            .min(self.state.max_size.height);
+
+        self.state.bounds = new_bounds;
     }
 }
 
-/// Resize cursor types
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum ResizeCursor {
-    North,
-    South,
-    East,
-    West,
-    NorthEast,
-    NorthWest,
-    SouthEast,
-    SouthWest,
-}
-
-/// Window manager for the compositor
+/// Window manager for handling multiple windows
 pub struct WindowManager {
-    windows: Arc<RwLock<HashMap<WindowId, Window>>>,
-    window_order: Arc<RwLock<Vec<WindowId>>>, // Z-order for rendering
-    focused_window: Arc<RwLock<Option<WindowId>>>,
-    ui_system: Arc<UISystem>,
-
-    /// Window interaction state
-    dragging_window: Arc<Mutex<Option<WindowId>>>,
-    resizing_window: Arc<Mutex<Option<(WindowId, ResizeCursor)>>>,
-    drag_offset: Arc<Mutex<(f32, f32)>>,
-
-    /// Window ID generation
-    next_window_id: AtomicU64,
-
-    /// Performance tracking
-    total_windows: AtomicU64,
-    visible_windows: AtomicU64,
+    windows: HashMap<WindowId, Window>,
+    window_order: Vec<WindowId>, // Z-order, back to front
+    focused_window: Option<WindowId>,
+    next_window_id: WindowId,
+    desktop_bounds: Rect,
 }
 
 impl WindowManager {
     /// Create a new window manager
-    pub fn new() -> Self {
-        let ui_system = Arc::new(UISystem::new(1920.0, 1080.0));
-
+    pub fn new(desktop_bounds: Rect) -> Self {
         Self {
-            windows: Arc::new(RwLock::new(HashMap::new())),
-            window_order: Arc::new(RwLock::new(Vec::new())),
-            focused_window: Arc::new(RwLock::new(None)),
-            ui_system,
-            dragging_window: Arc::new(Mutex::new(None)),
-            resizing_window: Arc::new(Mutex::new(None)),
-            drag_offset: Arc::new(Mutex::new((0.0, 0.0))),
-            next_window_id: AtomicU64::new(1),
-            total_windows: AtomicU64::new(0),
-            visible_windows: AtomicU64::new(0),
+            windows: HashMap::new(),
+            window_order: Vec::new(),
+            focused_window: None,
+            next_window_id: 1,
+            desktop_bounds,
         }
     }
 
     /// Create a new window
-    pub fn create_window(
-        &self,
-        title: String,
-        x: f32,
-        y: f32,
-        width: f32,
-        height: f32,
-    ) -> WindowId {
-        let window_id = self.next_window_id.fetch_add(1, Ordering::Relaxed);
+    pub fn create_window(&mut self, title: String, content: Box<dyn UIElement>) -> WindowId {
+        let window_id = self.next_window_id;
+        self.next_window_id += 1;
 
-        let window = Window::new(window_id, title, x, y, width, height, &self.ui_system);
+        let mut window = Window::new(window_id, title);
+        window.set_content(content);
 
-        {
-            let mut windows = self.windows.write().unwrap();
-            windows.insert(window_id, window);
-        }
+        // Position new window with slight offset from others
+        let offset = (self.windows.len() as f32 * 30.0) % 200.0;
+        let bounds = Rect::new(
+            100.0 + offset,
+            100.0 + offset,
+            800.0,
+            600.0,
+        );
+        window.set_bounds(bounds);
 
-        {
-            let mut window_order = self.window_order.write().unwrap();
-            window_order.push(window_id);
-        }
-
-        self.total_windows.fetch_add(1, Ordering::Relaxed);
-        self.visible_windows.fetch_add(1, Ordering::Relaxed);
-
-        // Focus the new window
+        self.windows.insert(window_id, window);
+        self.window_order.push(window_id);
         self.focus_window(window_id);
 
         window_id
     }
 
-    /// Destroy a window
-    pub fn destroy_window(&self, window_id: WindowId) {
-        {
-            let mut windows = self.windows.write().unwrap();
-            windows.remove(&window_id);
+    /// Close a window
+    pub fn close_window(&mut self, window_id: WindowId) -> bool {
+        if self.windows.remove(&window_id).is_some() {
+            self.window_order.retain(|&id| id != window_id);
+
+            // Focus next window if this was focused
+            if self.focused_window == Some(window_id) {
+                self.focused_window = self.window_order.last().copied();
+                if let Some(new_focus) = self.focused_window {
+                    if let Some(window) = self.windows.get_mut(&new_focus) {
+                        window.focus();
+                    }
+                }
+            }
+
+            true
+        } else {
+            false
         }
+    }
 
-        {
-            let mut window_order = self.window_order.write().unwrap();
-            window_order.retain(|&id| id != window_id);
+    /// Focus a window (brings to front)
+    pub fn focus_window(&mut self, window_id: WindowId) {
+        if self.windows.contains_key(&window_id) {
+            // Unfocus current window
+            if let Some(old_focus) = self.focused_window {
+                if let Some(window) = self.windows.get_mut(&old_focus) {
+                    window.unfocus();
+                }
+            }
+
+            // Move to front of Z-order
+            self.window_order.retain(|&id| id != window_id);
+            self.window_order.push(window_id);
+
+            // Focus new window
+            self.focused_window = Some(window_id);
+            if let Some(window) = self.windows.get_mut(&window_id) {
+                window.focus();
+            }
         }
+    }
 
-        // Focus another window if this was focused
-        let was_focused = {
-            let focused = self.focused_window.read().unwrap();
-            *focused == Some(window_id)
-        };
+    /// Get window by ID
+    pub fn get_window(&self, window_id: WindowId) -> Option<&Window> {
+        self.windows.get(&window_id)
+    }
 
-        if was_focused {
-            let next_window = {
-                let window_order = self.window_order.read().unwrap();
-                window_order.last().copied()
-            };
+    /// Get mutable window by ID
+    pub fn get_window_mut(&mut self, window_id: WindowId) -> Option<&mut Window> {
+        self.windows.get_mut(&window_id)
+    }
 
-            if let Some(next_id) = next_window {
-                self.focus_window(next_id);
-            } else {
-                *self.focused_window.write().unwrap() = None;
+    /// Update all windows (layout, etc.)
+    pub fn update(&mut self) {
+        for window in self.windows.values_mut() {
+            window.update_layout();
+        }
+    }
+
+    /// Render all windows in Z-order
+    pub fn render(&self) -> Vec<RenderLayer> {
+        let mut layers = Vec::new();
+
+        for (i, &window_id) in self.window_order.iter().enumerate() {
+            if let Some(window) = self.windows.get(&window_id) {
+                let commands = window.render(i as f32 * 10.0); // Space out Z-indices
+                if !commands.is_empty() {
+                    layers.push(RenderLayer {
+                        z_index: i as f32 * 10.0,
+                        commands,
+                        clip_rect: None,
+                    });
+                }
             }
         }
 
-        self.visible_windows.fetch_sub(1, Ordering::Relaxed);
+        layers
     }
 
-    /// Focus a window
-    pub fn focus_window(&self, window_id: WindowId) {
-        // Unfocus current window
-        if let Ok(focused) = self.focused_window.read() {
-            if let Some(current_focused) = *focused {
-                if let Ok(mut windows) = self.windows.write() {
-                    if let Some(window) = windows.get_mut(&current_focused) {
-                        window.set_focused(false, &self.ui_system);
+    /// Handle events for all windows
+    pub fn handle_event(&mut self, event: &Event) -> bool {
+        use crate::events::{InputEvent, ButtonState, MouseButton};
+
+        // Handle window focusing on mouse clicks
+        if let Event::Input(InputEvent::MouseButton { button: MouseButton::Left, state: ButtonState::Pressed, position, .. }) = event {
+            // Check windows in reverse Z-order (front to back)
+            for &window_id in self.window_order.iter().rev() {
+                if let Some(window) = self.windows.get(&window_id) {
+                    if window.state().bounds.contains_point(*position) && window.state().visible {
+                        self.focus_window(window_id);
+                        break;
                     }
                 }
             }
         }
 
-        // Focus new window
-        {
-            let mut focused = self.focused_window.write().unwrap();
-            *focused = Some(window_id);
-        }
-
-        if let Ok(mut windows) = self.windows.write() {
-            if let Some(window) = windows.get_mut(&window_id) {
-                window.set_focused(true, &self.ui_system);
+        // Forward event to focused window first
+        if let Some(focused_id) = self.focused_window {
+            if let Some(window) = self.windows.get_mut(&focused_id) {
+                if window.handle_event(event) {
+                    return true;
+                }
             }
         }
 
-        // Move to front of Z-order
-        {
-            let mut window_order = self.window_order.write().unwrap();
-            window_order.retain(|&id| id != window_id);
-            window_order.push(window_id);
-        }
-    }
-
-    /// Handle cursor movement for window interactions
-    pub fn handle_cursor_move(&self, x: f32, y: f32) {
-        // Handle window dragging
-        if let Ok(dragging) = self.dragging_window.lock() {
-            if let Some(window_id) = *dragging {
-                let drag_offset = *self.drag_offset.lock().unwrap();
-                let new_x = x - drag_offset.0;
-                let new_y = y - drag_offset.1;
-
-                if let Ok(mut windows) = self.windows.write() {
-                    if let Some(window) = windows.get_mut(&window_id) {
-                        window.set_position(new_x, new_y, &self.ui_system);
+        // If not handled by focused window, try all windows in reverse Z-order
+        for &window_id in self.window_order.iter().rev() {
+            if Some(window_id) != self.focused_window {
+                if let Some(window) = self.windows.get_mut(&window_id) {
+                    if window.handle_event(event) {
+                        return true;
                     }
                 }
             }
         }
 
-        // Handle window resizing
-        if let Ok(resizing) = self.resizing_window.lock() {
-            if let Some((window_id, cursor)) = *resizing {
-                if let Ok(mut windows) = self.windows.write() {
-                    if let Some(window) = windows.get_mut(&window_id) {
-                        self.resize_window_with_cursor(window, x, y, cursor);
-                    }
-                }
-            }
-        }
+        false
     }
 
-    /// Handle mouse input
-    pub fn handle_mouse_input(&self, button: MouseButton, state: ElementState) {
-        if button != MouseButton::Left {
-            return;
-        }
-
-        match state {
-            ElementState::Pressed => {
-                // Start drag or resize operation
-                // This would be implemented based on cursor position
-            }
-            ElementState::Released => {
-                // End drag or resize operation
-                *self.dragging_window.lock().unwrap() = None;
-                *self.resizing_window.lock().unwrap() = None;
-            }
-        }
+    /// Get list of all window IDs in Z-order
+    pub fn window_list(&self) -> &[WindowId] {
+        &self.window_order
     }
 
-    /// Handle high-precision mouse movement
-    pub fn handle_mouse_delta(&self, dx: f32, dy: f32) {
-        // Use for smooth window dragging with sub-pixel precision
-        if let Ok(dragging) = self.dragging_window.lock() {
-            if let Some(window_id) = *dragging {
-                if let Ok(mut windows) = self.windows.write() {
-                    if let Some(window) = windows.get_mut(&window_id) {
-                        let new_x = window.state.x + dx;
-                        let new_y = window.state.y + dy;
-                        window.set_position(new_x, new_y, &self.ui_system);
-                    }
-                }
-            }
-        }
+    /// Get focused window ID
+    pub fn focused_window(&self) -> Option<WindowId> {
+        self.focused_window
     }
 
-    /// Resize window based on cursor and position
-    fn resize_window_with_cursor(&self, window: &mut Window, x: f32, y: f32, cursor: ResizeCursor) {
-        let current_x = window.state.x;
-        let current_y = window.state.y;
-        let current_width = window.state.width;
-        let current_height = window.state.height;
-
-        let (new_x, new_y, new_width, new_height) = match cursor {
-            ResizeCursor::East => (current_x, current_y, x - current_x, current_height),
-            ResizeCursor::West => (x, current_y, current_x + current_width - x, current_height),
-            ResizeCursor::North => (current_x, y, current_width, current_y + current_height - y),
-            ResizeCursor::South => (current_x, current_y, current_width, y - current_y),
-            ResizeCursor::NorthEast => (
-                current_x,
-                y,
-                x - current_x,
-                current_y + current_height - y,
-            ),
-            ResizeCursor::NorthWest => (x, y, current_x + current_width - x, current_y + current_height - y),
-            ResizeCursor::SouthEast => (current_x, current_y, x - current_x, y - current_y),
-            ResizeCursor::SouthWest => (x, current_y, current_x + current_width - x, y - current_y),
-        };
-
-        window.set_bounds(new_x, new_y, new_width, new_height, &self.ui_system);
-    }
-
-    /// Get UI system reference
-    pub fn get_ui_system(&self) -> Arc<UISystem> {
-        Arc::clone(&self.ui_system)
-    }
-
-    /// Get window count
-    pub fn get_window_count(&self) -> (u64, u64) {
-        (
-            self.total_windows.load(Ordering::Relaxed),
-            self.visible_windows.load(Ordering::Relaxed),
-        )
+    /// Set desktop bounds (for window maximizing)
+    pub fn set_desktop_bounds(&mut self, bounds: Rect) {
+        self.desktop_bounds = bounds;
     }
 }
+
+// TODO: Advanced window management features to be implemented:
+//
+// 1. Window animations
+//    - Smooth open/close animations
+//    - Minimize/maximize transitions
+//    - Window movement animations
+//
+// 2. Advanced window features
+//    - Modal windows and dialogs
+//    - Window groups and tabs
+//    - Virtual desktops/workspaces
+//    - Window tiling and snapping
+//
+// 3. Performance optimizations
+//    - Occlusion culling (don't render hidden windows)
+//    - Dirty region tracking
+//    - GPU-accelerated window compositing
+//    - Multi-threaded window processing
+//
+// 4. Platform integration
+//    - Native window decorations option
+//    - System window list integration
+//    - Alt+Tab window switching
+//    - Taskbar integration

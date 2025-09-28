@@ -1,5 +1,5 @@
-// Text rendering shader using glyph atlas
-// Optimized for crisp text rendering at any scale
+// Solid color shader for rectangles and basic shapes
+// Optimized for maximum GPU performance
 
 struct Uniforms {
     projection: mat4x4<f32>,
@@ -21,16 +21,11 @@ struct VertexOutput {
 @group(0) @binding(0)
 var<uniform> uniforms: Uniforms;
 
-@group(1) @binding(0)
-var glyph_atlas: texture_2d<f32>;
-
-@group(1) @binding(1)
-var atlas_sampler: sampler;
-
 @vertex
 fn vs_main(input: VertexInput) -> VertexOutput {
     var output: VertexOutput;
 
+    // Transform to clip space
     output.clip_position = uniforms.projection * vec4<f32>(input.position, 0.0, 1.0);
     output.color = input.color;
     output.uv = input.uv;
@@ -40,12 +35,6 @@ fn vs_main(input: VertexInput) -> VertexOutput {
 
 @fragment
 fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
-    // Sample glyph alpha from atlas
-    let glyph_alpha = textureSample(glyph_atlas, atlas_sampler, input.uv).r;
-
-    // Apply text color with glyph alpha
-    var output_color = input.color;
-    output_color.a *= glyph_alpha;
-
-    return output_color;
+    // Simple solid color with alpha blending
+    return input.color;
 }
